@@ -1,0 +1,36 @@
+MYDIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Commands
+CD ?= cd
+CMAKE ?= cmake
+INSTALL ?= install 
+MAKE ?= make
+MKDIR ?= mkdir -p
+
+# Locations
+BUILDDIR ?= $(MYDIR)/build
+EXTDIR ?= $(MYDIR)/ext
+INSTALLDIR ?= $(BUILDDIR)
+SRCDIR ?= $(MYDIR)/src
+USRDIR ?= $(MYDIR)/usr
+
+# EbbRT 
+# 	NOTE: The EbbRT native toolchain is required to build Umm
+# 				but not included as part of this build system
+#
+#   Set EBBRT_SYSROOT env variable (default: /opt/ebbrt)
+EBBRT_SYSROOT ?= $(abspath /opt/ebbrt)
+EBBRT_BIN_DIR=${EBBRT_SYSROOT}/usr/bin
+EBBRTCC=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-gcc
+EBBRTCXX=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-g++
+EBBRTAR=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-ar
+
+# Umm
+UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP 
+UMM_ARCH=x86_64
+UMM_ARFLAGS =rcs 
+UMM_INCLUDE_DIR ?= $(SRCDIR)
+UMM_INSTALL_DIR ?= $(INSTALLDIR)
+ifdef DEBUG
+UMM_CPP_FLAGS += -O0 -g3
+endif

@@ -3,6 +3,7 @@ EXT_PATH := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # solo5
 SOLO5_DIR ?= $(EXT_PATH)/solo5
 SOLO5_OBJ ?= $(SOLO5_DIR)/kernel/ebbrt/solo5.o
+SOLO5_HW ?= $(SOLO5_DIR)/tests/test_hello/test_hello.ebbrt
 
 # rumprun
 RUMP_DIR ?= $(EXT_PATH)/rumprun
@@ -20,6 +21,8 @@ NODEJS_BIN=$(NODEJS_PATH)/build-4.3.0/out/Release/node
 
 $(SOLO5_OBJ):
 	$(MAKE) -C $(SOLO5_DIR) ebbrt
+
+$(SOLO5_HW): $(SOLO5_OBJ)
 
 $(RUMP_SOLO5_X86_64):
 	cd $(RUMP_DIR) && git submodule update --init
