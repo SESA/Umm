@@ -126,7 +126,7 @@ enum ShT_Types {
   SHT_REL = 9,      // Relocation (no addend)
 };
 
-static char *get_section_name(const Ehdr *eh, const Shdr *sh) {
+inline char *get_section_name(const Ehdr *eh, const Shdr *sh) {
   kassert(eh != 0);
   // Section header table
   Shdr *sht = (Shdr *)((char *)eh + eh->e_shoff);
@@ -141,7 +141,7 @@ static char *get_section_name(const Ehdr *eh, const Shdr *sh) {
   return name;
 }
 
-static bool elf_check_file(const Ehdr *eh) {
+inline bool elf_check_file(const Ehdr *eh) {
   if (!eh)
     return false;
   if (eh->e_ident[EI_MAG0] != ELFMAG0) {
@@ -163,7 +163,7 @@ static bool elf_check_file(const Ehdr *eh) {
   return true;
 }
 
-static bool elf_check_supported(const Ehdr *eh) {
+inline bool elf_check_supported(const Ehdr *eh) {
   if (eh->e_ident[EI_CLASS] != ELFCLASS64) {
     ERROR("Unsupported ELF File Class.\n");
     return false;
