@@ -1,0 +1,10 @@
+[submodule "ext/solo5"]
+	path = ext/solo5
+	url = https://github.com/jmcadden/solo5.git
+[submodule "ext/rumprun"]
+	path = ext/rumprun
+	url = https://github.com/jmcadden/rumprun.git
+	branch = ebbrt
+[submodule "ext/rumprun-packages"]
+	path = ext/rumprun-packages
+	url = https://github.com/jmcadden/rumprun-packages.git

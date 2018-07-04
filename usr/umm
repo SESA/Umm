@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Takes SV elf and generates binary blob
+OM_DIR=$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )")
+
+#Bad arguments
+if [ $? -ne 0 ];
+then
+  exit 1
+fi
+
+svelf=$1
+
+shift
+
+[[ ! -a $svelf ]] && echo "ERROR: $svelf does not exist" && exit -1
+
+if [[ ! -a ${PWD}/om.${svelf}.svelf32 || $sv -nt ${PWD}/om.${svelf}.svelf32 ]]; then
+    objcopy -I binary -O elf64-x86-64 --binary-architecture i386 \
+          --rename-section .data=.sv.data,alloc,contents,load,data \
+  	      --redefine-sym _binary_${svelf}_start=_sv_start \
+           ${svelf} ${svelf}.binelf
+fi
