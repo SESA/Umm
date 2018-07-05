@@ -5,14 +5,13 @@
 #ifndef UMM_UM_STATE_H_
 #define UMM_UM_STATE_H_
 
-/*
- *  UmState.h - Data type containing Umm Instance state
- */
-
 #include "umm-common.h"
 
 namespace umm {
 
+/** UmState
+ *  Data type containing Umm Instance state
+ */
 class UmState {
 public:
   // UmState::Region Class

@@ -5,20 +5,21 @@
 #ifndef UMM_UM_MANAGER_H_
 #define UMM_UM_MANAGER_H_
 
-/*
- *  UmManager.h - Ebb for managing the per-core execution of Umm instances
- */
-
 #include <ebbrt/EbbId.h> 
 #include <ebbrt/GlobalStaticIds.h>
 #include <ebbrt/MulticoreEbb.h>
 #include <ebbrt/native/VMemAllocator.h>
 
 #include "umm-common.h"
+#include "umm-x86_64.h"
+
 #include "UmInstance.h"
 
 namespace umm {
 
+/** UmManager
+ *  Ebb that manages the per-core execution of Umm instances
+ */
 class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
   static void Init(); // Class-wide static initialization logic

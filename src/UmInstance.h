@@ -5,9 +5,6 @@
 #ifndef UMM_UM_INSTANCE_H_
 #define UMM_UM_INSTANCE_H_
 
-/*
- *  UmInstance.h - Executable unikernel monitor instance 
- */
 
 #include "umm-common.h"
 
@@ -15,6 +12,9 @@
 
 namespace umm {
 
+/** UmInstance 
+ *  Executable unikernel monitor instance 
+ */
 class UmInstance {
 public:
   UmInstance() = delete;

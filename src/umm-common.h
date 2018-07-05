@@ -5,8 +5,8 @@
 #ifndef UMM_COMMON_H_
 #define UMM_COMMON_H_
 
-/*
- * umm-common.h - common definitions for all Umm classes   
+/** umm-common.h
+ *  Common definitions for all Umm classes   
  */
 
 #include <cstdint>

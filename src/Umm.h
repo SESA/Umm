@@ -5,10 +5,9 @@
 #ifndef UMM_UMM_H_
 #define UMM_UMM_H_
 
-/*
- *  Umm.h - Main include header for regular users of the Umm library
+/** Umm.h
+ *  Primary include for application using the Umm library
  */
-
 #include "UmInstance.h"
 #include "UmLoader.h"
 #include "UmManager.h"

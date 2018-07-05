@@ -5,8 +5,8 @@
 #ifndef UMM_UM_LOADER_H_
 #define UMM_UM_LOADER_H_
 
-/*
- *  UmLoader.h - Load Um instances from Elf and beyond...
+/** UmLoader.h  
+ *  Load Um instances from Elf and beyond...
  */
 
 #include "umm-common.h"
