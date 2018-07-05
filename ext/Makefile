@@ -7,7 +7,7 @@ SOLO5_HW ?= $(SOLO5_DIR)/tests/test_hello/test_hello.ebbrt
 
 # rumprun
 RUMP_DIR ?= $(EXT_PATH)/rumprun
-RUMP_BAKE = $(RUMP_DIR)/rumprun-solo5/bin/rump-bake
+RUMP_BAKE = $(RUMP_DIR)/rumprun-solo5/bin/rumprun-bake
 RUMP_SOLO5_X86_64=$(RUMP_DIR)/rumprun-solo5/rumprun-x86_64/lib
 RUMP_SOLO5_UKVM=$(RUMP_SOLO5_X86_64)/rumprun-solo5/libsolo5_ukvm.a
 
@@ -18,6 +18,14 @@ RUMPCONFIG = $(RUMPPACKDIR)/config.mk
 #	rumprun-nodejs
 NODEJS_PATH ?= $(RUMPPACKDIR)/nodejs/
 NODEJS_BIN=$(NODEJS_PATH)/build-4.3.0/out/Release/node
+
+all: solo5 nodejs
+
+solo5: $(SOLO5_OBJ)
+
+rumprun: $(RUMP_SOLO5_X86_64) $(RUMP_SOLO5_UKVM)
+
+nodejs: $(NODEJS_BIN)
 
 $(SOLO5_OBJ):
 	$(MAKE) -C $(SOLO5_DIR) ebbrt
@@ -31,17 +39,13 @@ $(RUMP_SOLO5_X86_64):
 $(RUMP_SOLO5_UKVM): $(SOLO5_OBJ) | $(RUMP_SOLO5_X86_64)
 	$(INSTALL) -m 664 -D $(SOLO5_OBJ) $@
 
-$(NODEJS_BIN): $(RUMPCONFIG)
+$(RUMP_BAKE): $(RUMP_SOLO5_X86_64)
+
+$(NODEJS_BIN): $(RUMPCONFIG) rumprun
 	/bin/bash -c "source $(RUMP_DIR)/obj/config-PATH.sh && $(MAKE) -C $(NODEJS_PATH)"
 
 $(RUMPCONFIG):
 	echo "RUMPRUN_TOOLCHAIN_TUPLE=x86_64-rumprun-netbsd" > $@
-
-solo5: $(SOLO5_OBJ)
-
-rumprun: $(RUMP_SOLO5_X86_64)
-
-nodejs: $(NODEJS_BIN)
 
 ext-clean:
 	$(MAKE) -C $(SOLO5_DIR) clean

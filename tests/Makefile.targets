@@ -1,0 +1,16 @@
+# Shared Mmakefile for specifying different Umm targets
+
+-include ../../Makefile.common
+-include $(EXTDIR)/Makefile
+
+TARGET ?= nodejs # Default target. Additional targets: solo5-hello
+
+# Copy target binary into local directly as 'target'
+
+solo5-hello: $(SOLO5_HW) 
+	$(INSTALL) -m 664 -D $< target
+
+nodejs: $(NODEJS_BIN)
+	$(RUMP_BAKE) solo5_ukvm_net target $<
+
+.PHONY: solo5-hello nodejs
