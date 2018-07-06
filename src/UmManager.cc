@@ -28,7 +28,6 @@ void umm::UmManager::Init() {
 }
 
 void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
-  //kprintf(CYAN "Current ExceptionFrame: \n" RESET);
   //PrintExceptionFrame(ef);
   if(is_running_){
     *ef = restore_frame_;
@@ -40,9 +39,6 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     ef->rsi = umi_->ef_.rsi;
     is_running_ = true;
   }
-  //kprintf(CYAN "New ExceptionFrame: \n" RESET);
-  //PrintExceptionFrame(ef);
-  //kprintf(MAGENTA "Returning. Here goes nothing...\n" RESET);
 }
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
@@ -59,7 +55,7 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
   /* Pass to the mounted sv to select/allocate the backing page */
-  auto physical_start_addr = umi_->GetBackingPageAddress(virtual_page_addr);
+  auto physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
   auto backing_page = Pfn::Down(physical_start_addr);
 
   /* Map backing page into core's page tables */
@@ -86,7 +82,7 @@ void umm::UmManager::Start() { // Enter
     kprintf_force(GREEN "\nUmm... Kicking off the Um Instance!\n" RESET);
   trigger_entry_exception();
   kprintf_force(GREEN "Umm... Returned from Um Instance!\n" RESET);
-  umi_->PrintStats();
+  umi_->Print();
   is_running_ = false;
 }
 

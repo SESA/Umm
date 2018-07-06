@@ -19,16 +19,21 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
     ef_.rsi = (uint64_t)argv;
 }
 
-uintptr_t umm::UmInstance::GetBackingPageAddress(uintptr_t vaddr) {
+void umm::UmInstance::Print() {
+  kprintf("Number of pages allocated: %d\n", page_count);
+  sv_.Print();
+}
+
+uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
 
   auto vp_start_addr = Pfn::Down(vaddr).ToAddr();
+  auto reg = sv_.GetRegionOfAddr(vaddr);
 
   /* Allocate new physical page for the faulted region */
   Pfn backing_page = ebbrt::page_allocator->Alloc();
   page_count++;
   auto bp_start_addr = backing_page.ToAddr();
 
-  auto reg = sv_.GetRegionOfAddr(vaddr);
 
   // Check for a backing source 
   if (reg.data != nullptr) {

@@ -25,20 +25,36 @@ public:
       else
         return 0;
     }
+    void Print() {
+      kprintf_force("Region name: %s\n", name.c_str());
+      kprintf_force("       size: %d\n", length);
+      kprintf_force("  read-only: %d\n", !writable);
+      kprintf_force("  page size: %d\n", kPageSize + (kPageSize * page_order));
+      kprintf_force("page misses: %d\n", count);
+    }
     uintptr_t start; // starting virtual address of region
     size_t length;
     std::string name;
     bool writable = false;
+    uint8_t page_order=0; // pow2 page size 
+    size_t count=0; // miss counter
     unsigned char *data = nullptr; // Location of backing data.
   }; // UmState::Region
 
   UmState() = delete;
   explicit UmState(uintptr_t entry) : entry_(entry){};
   void AddRegion(Region &reg) { region_list_.push_back(reg); }
+  void Print() {
+    for (auto &reg : region_list_)
+      reg.Print();
+      kprintf_force("--\n");
+  }
   const Region &GetRegionOfAddr(uintptr_t vaddr) {
     for (auto &reg : region_list_) {
-      if (reg.AddrIsInRegion(vaddr))
+      if (reg.AddrIsInRegion(vaddr)){
+        reg.count++;
         return reg;
+      }
     }
     // FIXME(jmcadden): Don't return empty region, or define NOP region
     return std::move(Region());
