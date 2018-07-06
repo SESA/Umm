@@ -117,5 +117,9 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
 
     // TODO(jmcadden): Add heap/stack section to Region
 
-    return std::make_unique<UmInstance>(ret_state);
+    // Create the Um Instance and set boot configuration
+    uint64_t argc = Solo5BootArguments();
+    auto umi = std::make_unique<UmInstance>(ret_state);
+    umi->SetArguments(argc);
+    return std::move(umi);
 }

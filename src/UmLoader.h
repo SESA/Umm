@@ -10,6 +10,7 @@
  */
 
 #include "umm-common.h"
+#include "umm-solo5.h"
 
 #include "UmInstance.h"
 #include "UmState.h"

@@ -23,11 +23,14 @@ namespace umm {
 class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
   static void Init(); // Class-wide static initialization logic
-  static bool addrInVirtualRange(uintptr_t);
   void Load(std::unique_ptr<UmInstance>);
   uint8_t Start(); 
+  void SetBreakpoint(uintptr_t vaddr);
   std::unique_ptr<UmInstance> Unload();
-  void HandlePageFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr);
+
+  void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
+  void process_resume(ExceptionFrame *ef);
+  void process_checkpoint(ExceptionFrame *ef);
 
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
 
@@ -36,9 +39,12 @@ private:
   public:
     void HandleFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr) override;
   };
+  void trigger_breakpoint_exception(){ __asm__ __volatile__("int3"); };
+  bool valid_address(uintptr_t);
 
   bool is_loaded_ = false;
-  std::unique_ptr<UmInstance> um_kernel_;
+  bool is_running_ = false;
+  std::unique_ptr<UmInstance> umi_;
 };
 
 const uintptr_t kSlotStartVAddr = 0xFFFFC00000000000;

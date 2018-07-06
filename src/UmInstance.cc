@@ -7,6 +7,18 @@
 
 #include "UmInstance.h"
 
+umm::UmInstance::UmInstance(umm::UmState sv) : sv_(sv) {
+  // Set the instruction pointer to the execution entrypoint
+  ef_.rip = sv.entry_;
+}
+
+void umm::UmInstance::SetArguments(const uint64_t argc,
+                                   const char *argv[]) {
+  ef_.rdi = argc;
+  if(argv)
+    ef_.rsi = (uint64_t)argv;
+}
+
 uintptr_t umm::UmInstance::GetBackingPageAddress(uintptr_t vaddr) {
 
   auto vp_start_addr = Pfn::Down(vaddr).ToAddr();

@@ -13,14 +13,16 @@
 namespace umm {
 
 /** UmInstance 
- *  Executable unikernel monitor instance 
+ *  Executable unikernel monitor (Um) instance 
  */
 class UmInstance {
 public:
   UmInstance() = delete;
-  explicit UmInstance(UmState sv) : sv_(sv){};
+  explicit UmInstance(UmState sv);
   uintptr_t GetBackingPageAddress(uintptr_t vaddr);
   uintptr_t GetEntrypoint() { return sv_.entry_; };
+  void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
+  ExceptionFrame ef_; //TODO: make private
 
 private:
   UmState sv_;
