@@ -48,7 +48,12 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
   // Load the section header from the elf
   Shdr *sht = (Shdr *)((char *)eh + eh->e_shoff);
 
-  // Iterate over each section
+  // Last page pointer
+  uintptr_t next_page_ptr = 0;
+
+  /** Elf Section Loop
+  *   Iterate over each section
+  */
   for (int i = 0; i < eh->e_shnum; i++) {
     Shdr *sh = sht + i;
 
@@ -69,7 +74,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
         std::string(get_section_name(eh, sh)) == ".strtab") {
       elf_strtab = ((char *)eh + sh->sh_offset);
       elf_strtab_size = sh->sh_size;
-			continue;
+      continue;
     }
 
     // Skip section if doesn't appear in address space.
@@ -91,35 +96,49 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
     // Set data reference to backing physical memory
     if (!(sh->sh_type == SHT_NOBITS)) {
       reg.data = (unsigned char *)eh + sh->sh_offset;
-      }
+    }
 
-      // Check for any speciality sections to the current section
-      //    E.g., gcc_except_* which typically follows .rodata
-      int i_ptr = i;
-      while (i_ptr < eh->e_shnum && ++i_ptr) {
-        Shdr *nxt_sh = sht + i_ptr;
-        auto sh_name = std::string(get_section_name(eh, nxt_sh));
-        if (sh_name.length() == 0)
-          break;
-        if (sh_name.substr(0, 8) != "link_set" &&
-            sh_name.substr(0, 5) != ".gcc_")
-          break;
-        // Assume a link_set_* section and include it the current section
-        kprintf("Extra data section found: %s\n", sh_name.c_str());
-        i++;
-        // Expand the Region length to include this addition section
-        // XXX(jmcadden): New offset does not account for section alignment
-        reg.length += nxt_sh->sh_size;
-      }
+    /** Specialty section loops
+    *   E.g., gcc_except_* which typically follows .rodata
+    */
+    int i_ptr = i;
+    while (i_ptr < eh->e_shnum && ++i_ptr) {
+      Shdr *nxt_sh = sht + i_ptr;
+      auto sh_name = std::string(get_section_name(eh, nxt_sh));
+      if (sh_name.length() == 0)
+        break;
+      if (sh_name.substr(0, 8) != "link_set" && sh_name.substr(0, 5) != ".gcc_")
+        break;
+      // Assume a link_set_* section and include it the current section
+      kprintf("Extra data section found: %s\n", sh_name.c_str());
+      i++;
+      // Expand the Region length to include this addition section
+      // XXX(jmcadden): New offset does not account for section alignment
+      reg.length += nxt_sh->sh_size;
+    }
 
-      ret_state.AddRegion(reg);
-    } // end Region loop
+    // Last the last page pointer after the bss region
+    if (reg.name == ".bss") {
+      next_page_ptr = ebbrt::Pfn::Up(reg.start + reg.length).ToAddr();
+    }
+    
+    ret_state.AddRegion(reg);
+  } // end Elf Section loop
 
-    // TODO(jmcadden): Add heap/stack section to Region
+  // Add 'usr' region at the next available page
+  kassert(next_page_ptr);
+  auto usr_reg = UmState::Region();
+  usr_reg.start = next_page_ptr;
+  usr_reg.length = UMM_USR_REGION_SIZE;
+  usr_reg.name = std::string("usr");
+  usr_reg.writable = true;
+  ret_state.AddRegion(usr_reg);
 
-    // Create the Um Instance and set boot configuration
-    uint64_t argc = Solo5BootArguments();
-    auto umi = std::make_unique<UmInstance>(ret_state);
-    umi->SetArguments(argc);
-    return std::move(umi);
+  // Configure solo5 boot arguments
+  uint64_t argc = Solo5BootArguments(next_page_ptr, UMM_USR_REGION_SIZE);
+
+  // Create the Um Instance and set boot configuration
+  auto umi = std::make_unique<UmInstance>(ret_state);
+  umi->SetArguments(argc);
+  return std::move(umi);
 }

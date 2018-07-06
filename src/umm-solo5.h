@@ -41,19 +41,16 @@ static void exit_kludge() {
   umm::manager->Start();
 }
 
-static inline uint64_t Solo5BootArguments() {
+static inline uint64_t Solo5BootArguments(uint64_t kernel_end, uint64_t mem_size) {
   // Solo5 boot arguments
   auto kern_info = new struct ukvm_boot_info;
-  // TODO(jmcadden): Set memsize to remaining slot size
-  kern_info->mem_size = 1 << 28;
-  // TODO(jmcadden): Dynamic heap within execution slot
-  kern_info->kernel_end = (uint64_t)malloc(1 << 28);
+  kern_info->mem_size = mem_size;
+  kern_info->kernel_end = kernel_end;
   char opt_debug[] = "--solo5:debug";
   kern_info->cmdline = opt_debug;
   kern_info->cpu.ebbrt_printf_addr = (uint64_t)kprintf_force;
   kern_info->cpu.ebbrt_walltime_addr = (uint64_t)wallclock_kludge;
   kern_info->cpu.ebbrt_exit_addr = (uint64_t)exit_kludge;
-
   return (uint64_t)kern_info;
 }
 }

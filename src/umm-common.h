@@ -9,6 +9,8 @@
  *  Common definitions for all Umm classes   
  */
 
+#define UMM_USR_REGION_SIZE 1<<28 
+
 #include <cstdint>
 #include <list>   // region list
 #include <memory> // std::unique_ptr
