@@ -10,6 +10,7 @@
  */
 
 #define UMM_USR_REGION_SIZE 1<<28 
+#define UMM_REGION_PAGE_ORDER 0  //  2^i pages
 
 #include <cstdint>
 #include <list>   // region list

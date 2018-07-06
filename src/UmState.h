@@ -29,14 +29,14 @@ public:
       kprintf_force("Region name: %s\n", name.c_str());
       kprintf_force("       size: %d\n", length);
       kprintf_force("  read-only: %d\n", !writable);
-      kprintf_force("  page size: %d\n", kPageSize + (kPageSize * page_order));
+      kprintf_force("  page size: %d\n", kPageSize << page_order);
       kprintf_force("page misses: %d\n", count);
     }
     uintptr_t start; // starting virtual address of region
     size_t length;
     std::string name;
     bool writable = false;
-    uint8_t page_order=0; // pow2 page size 
+    uint8_t page_order = UMM_REGION_PAGE_ORDER; // pow2 page size 
     size_t count=0; // miss counter
     unsigned char *data = nullptr; // Location of backing data.
   }; // UmState::Region

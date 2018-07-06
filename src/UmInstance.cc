@@ -29,6 +29,9 @@ uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
   auto vp_start_addr = Pfn::Down(vaddr).ToAddr();
   auto reg = sv_.GetRegionOfAddr(vaddr);
 
+  // TODO(jmcadden): Support large pages per-region
+  kassert(reg.page_order == 0);
+
   /* Allocate new physical page for the faulted region */
   Pfn backing_page = ebbrt::page_allocator->Alloc();
   page_count++;
