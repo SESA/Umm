@@ -14,6 +14,7 @@ extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
+  kprintf(MAGENTA "Umm... Handling breakpoint exception\n" RESET);
   umm::manager->process_resume(ef);
 }
 
@@ -27,9 +28,23 @@ void umm::UmManager::Init() {
 }
 
 void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
-  kprintf(CYAN "Processing a resume\n" RESET);
-
+  //kprintf(CYAN "Current ExceptionFrame: \n" RESET);
+  //PrintExceptionFrame(ef);
+  if(is_running_){
+    *ef = restore_frame_;
+    is_running_ = false;
+  } else {
+    restore_frame_ = *ef;
+    ef->rip = umi_->ef_.rip;
+    ef->rdi = umi_->ef_.rdi;
+    ef->rsi = umi_->ef_.rsi;
+    is_running_ = true;
+  }
+  //kprintf(CYAN "New ExceptionFrame: \n" RESET);
+  //PrintExceptionFrame(ef);
+  //kprintf(MAGENTA "Returning. Here goes nothing...\n" RESET);
 }
+
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kprintf(MAGENTA "UMM... SNAPSHOT TIME. *CLICK* \n" RESET);
 }
@@ -43,7 +58,6 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
-
   /* Pass to the mounted sv to select/allocate the backing page */
   auto physical_start_addr = umi_->GetBackingPageAddress(virtual_page_addr);
   auto backing_page = Pfn::Down(physical_start_addr);
@@ -62,22 +76,19 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   kbugon(!is_loaded_);
   auto tmp_um = std::move(umi_);
   is_loaded_ = false;
-  // TODO(jmcadden): Unmap slot memory
+  // XXX(jmcadden): Unmap slot memory
   return std::move(tmp_um);
 }
 
-uint8_t umm::UmManager::Start() {
+void umm::UmManager::Start() {
   kbugon(!is_loaded_);
-  kbugon(is_running_);
-  kprintf_force(GREEN "\nOm: Kicking off the Um Instance\n" RESET);
-  //TODO(jmcadden): Jump via breakpoint exception 
-  uint32_t (*Entry)() = (uint32_t(*)())umi_->GetEntrypoint();
-  const uint64_t args = umi_->ef_.rdi;
-  __asm__ __volatile__("mov %0, %%rdi" ::"r"(args));
-  return Entry();
+  if(!is_running_)
+    kprintf_force(GREEN "\nUmm... Kicking off the Um Instance!\n" RESET);
+  trigger_entry_exception();
+  kprintf_force(GREEN "Umm... Returned from Um Instance!\n" RESET);
 }
 
-void umm::UmManager::SetBreakpoint(uintptr_t vaddr){
+void umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   kassert(valid_address(vaddr));
 
   x86_64::DR7 dr7;

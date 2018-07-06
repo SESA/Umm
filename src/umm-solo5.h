@@ -7,6 +7,8 @@
 
 #include "umm-common.h"
 
+#include "UmManager.h"
+
 #include <ebbrt/native/Clock.h>
 
 namespace umm{
@@ -35,7 +37,8 @@ static uint64_t wallclock_kludge() {
 
 static void exit_kludge() {
   // FIXME(jmcadden): We don't yet support exits
-  kabort("Received an exit call \n");
+  kprintf("Received an exit call \n");
+  umm::manager->Start();
 }
 
 static inline uint64_t Solo5BootArguments() {

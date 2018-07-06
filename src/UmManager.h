@@ -24,8 +24,8 @@ class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
   static void Init(); // Class-wide static initialization logic
   void Load(std::unique_ptr<UmInstance>);
-  uint8_t Start(); 
-  void SetBreakpoint(uintptr_t vaddr);
+  void Start(); 
+  void SetCheckpoint(uintptr_t vaddr);
   std::unique_ptr<UmInstance> Unload();
 
   void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
@@ -39,11 +39,12 @@ private:
   public:
     void HandleFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr) override;
   };
-  void trigger_breakpoint_exception(){ __asm__ __volatile__("int3"); };
+  void trigger_entry_exception(){ __asm__ __volatile__("int3"); };
   bool valid_address(uintptr_t);
 
   bool is_loaded_ = false;
   bool is_running_ = false;
+  ExceptionFrame restore_frame_; 
   std::unique_ptr<UmInstance> umi_;
 };
 
