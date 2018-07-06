@@ -20,8 +20,13 @@ extern unsigned char _sv_start __attribute__((weak));
 namespace umm {
 namespace ElfLoader {
 
-// Interprets Elf object and creates a new Um Instance
+const char *get_symbol_name(uint64_t tbl_idx);
+
+// Interprets Elf binary and creates a new Um Instance
 std::unique_ptr<UmInstance> CreateInstanceFromElf(unsigned char *elf_start);
+
+// Get the address of a symbol in the target
+uintptr_t GetSymbolAddress(const char *sym);
 
 #define STACK_PAGES (1 << 8)
 #define HEAP_PAGES (1 << 8)
@@ -36,14 +41,13 @@ std::unique_ptr<UmInstance> CreateInstanceFromElf(unsigned char *elf_start);
 #define ELFCLASS64 2
 #define EV_CURRENT 1
 
-/* 32-bit ELF base types. */
+/* ELF base types. */
 typedef uint32_t Elf32_Addr;
 typedef uint16_t Elf32_Half;
 typedef uint32_t Elf32_Off;
 typedef int32_t Elf32_Sword;
 typedef uint32_t Elf32_Word;
-
-/* 64-bit ELF base types. */
+typedef uint16_t Elf32_Section;
 typedef uint64_t Elf64_Addr;
 typedef uint16_t Elf64_Half;
 typedef int16_t Elf64_SHalf;
@@ -52,6 +56,45 @@ typedef int32_t Elf64_Sword;
 typedef uint32_t Elf64_Word;
 typedef uint64_t Elf64_Xword;
 typedef int64_t Elf64_Sxword;
+typedef uint16_t Elf64_Section;
+
+// Symbol table entry
+typedef struct
+{
+  Elf64_Word    st_name;                /* Symbol name (string tbl index) */
+  unsigned char st_info;                /* Symbol type and binding */
+  unsigned char st_other;               /* No defined meaning, 0 */
+  Elf64_Section st_shndx;               /* Section index */
+  Elf64_Addr    st_value;               /* Symbol value */
+  Elf64_Xword   st_size;                /* Symbol size */
+} Elf64_Sym;
+
+
+#define STN_UNDEF	0		/* Undefined symbol index */
+
+#define STB_LOCAL	0		/* Symbol not visible outside obj */
+#define STB_GLOBAL	1		/* Symbol visible outside obj */
+#define STB_WEAK	2		/* Like globals, lower precedence */
+#define STB_LOOS	10		/* OS-specific semantics */
+#define STB_GNU_UNIQUE	10		/* Symbol is unique in namespace */
+#define STB_HIOS	12		/* OS-specific semantics */
+#define STB_LOPROC	13		/* Processor-specific semantics */
+#define STB_HIPROC	15		/* Processor-specific semantics */
+
+#define STT_NOTYPE	0		/* Symbol type is unspecified */
+#define STT_OBJECT	1		/* Symbol is a data object */
+#define STT_FUNC	2		/* Symbol is a code object */
+#define STT_SECTION	3		/* Symbol associated with a section */
+#define STT_FILE	4		/* Symbol gives a file name */
+#define STT_COMMON	5		/* An uninitialised common block */
+#define STT_TLS		6		/* Thread local data object */
+#define STT_RELC	8		/* Complex relocation expression */
+#define STT_SRELC	9		/* Signed Complex relocation expression */
+#define STT_LOOS	10		/* OS-specific semantics */
+#define STT_GNU_IFUNC	10		/* Symbol is an indirect code object */
+#define STT_HIOS	12		/* OS-specific semantics */
+#define STT_LOPROC	13		/* Processor-specific semantics */
+#define STT_HIPROC	15		/* Processor-specific semantics */
 
 // ELF Header
 #define EI_NIDENT 16
