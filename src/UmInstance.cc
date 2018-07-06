@@ -25,6 +25,7 @@ uintptr_t umm::UmInstance::GetBackingPageAddress(uintptr_t vaddr) {
 
   /* Allocate new physical page for the faulted region */
   Pfn backing_page = ebbrt::page_allocator->Alloc();
+  page_count++;
   auto bp_start_addr = backing_page.ToAddr();
 
   auto reg = sv_.GetRegionOfAddr(vaddr);

@@ -22,9 +22,11 @@ public:
   uintptr_t GetBackingPageAddress(uintptr_t vaddr);
   uintptr_t GetEntrypoint() { return sv_.entry_; };
   void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
+  void PrintStats() { kprintf("Number of pages allocated: %d\n", page_count); }
   ExceptionFrame ef_; //TODO: make private
 
 private:
+  size_t page_count = 0;
   UmState sv_;
 }; // umm::UmInstance
 }

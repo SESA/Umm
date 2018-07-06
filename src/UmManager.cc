@@ -80,12 +80,14 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   return std::move(tmp_um);
 }
 
-void umm::UmManager::Start() {
+void umm::UmManager::Start() { // Enter
   kbugon(!is_loaded_);
-  if(!is_running_)
+  if (!is_running_)
     kprintf_force(GREEN "\nUmm... Kicking off the Um Instance!\n" RESET);
   trigger_entry_exception();
   kprintf_force(GREEN "Umm... Returned from Um Instance!\n" RESET);
+  umi_->PrintStats();
+  is_running_ = false;
 }
 
 void umm::UmManager::SetCheckpoint(uintptr_t vaddr){
