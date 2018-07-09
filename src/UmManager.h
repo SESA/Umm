@@ -14,6 +14,7 @@
 #include "umm-x86_64.h"
 
 #include "UmInstance.h"
+#include "UmState.h"
 
 namespace umm {
 
@@ -22,16 +23,18 @@ namespace umm {
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
+  enum Status : uint8_t { empty = 0, loaded, running, snapshot, finished };
   static void Init(); // Class-wide static initialization logic
   void Load(std::unique_ptr<UmInstance>);
   void Start(); 
-  void SetCheckpoint(uintptr_t vaddr);
+  ebbrt::Future<UmState> SetCheckpoint(uintptr_t vaddr);
   std::unique_ptr<UmInstance> Unload();
 
   void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
   void process_resume(ExceptionFrame *ef);
   void process_checkpoint(ExceptionFrame *ef);
-
+  Status status() { return status_.Get(); } ; 
+  void set_status( Status s ) { return status_.Set(s);}
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
 
 private:
@@ -39,13 +42,22 @@ private:
   public:
     void HandleFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr) override;
   };
+  class UmmStatus {
+  public:
+    UmManager::Status Get() { return s_; }
+    void Set(UmManager::Status);
+
+  private:
+    UmManager::Status s_ = empty;
+  };
   void trigger_entry_exception(){ __asm__ __volatile__("int3"); };
   bool valid_address(uintptr_t);
 
-  bool is_loaded_ = false;
-  bool is_running_ = false;
-  ExceptionFrame restore_frame_; 
+  UmmStatus status_;
+  ExceptionFrame caller_restore_frame_; 
+  ExceptionFrame snap_restore_frame_; 
   std::unique_ptr<UmInstance> umi_;
+  ebbrt::Promise<UmState> umi_snapshot_;
 };
 
 const uintptr_t kSlotStartVAddr = 0xFFFFC00000000000;

@@ -14,7 +14,6 @@ void AppMain() {
   umm::UmManager::Init();
   
   // Generated UM Instance from the linked in Elf 
-  kprintf("_sv_start = %p\n", &_sv_start);
   auto snap = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
   umm::manager->Load(std::move(snap));
   umm::manager->Start();

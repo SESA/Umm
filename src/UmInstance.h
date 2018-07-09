@@ -21,12 +21,9 @@ public:
   explicit UmInstance(UmState sv);
   /** GetBackingPage - Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
-  uintptr_t GetEntrypoint() { return sv_.entry_; };
   void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
   void Print();
-  ExceptionFrame ef_; //TODO: make private
-
-private:
+  UmState Snapshot(ebbrt::idt::ExceptionFrame *ef);
   size_t page_count = 0;
   UmState sv_;
 }; // umm::UmInstance

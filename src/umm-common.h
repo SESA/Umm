@@ -18,6 +18,7 @@
 #include <cinttypes> // PRIx64 
 
 #include <ebbrt/Debug.h>
+#include <ebbrt/Future.h>
 #include <ebbrt/native/Idt.h>
 #include <ebbrt/native/Pfn.h>
 #include <ebbrt/native/VMem.h>
@@ -30,7 +31,6 @@ using ebbrt::kabort;
 using ebbrt::Pfn;
 using ebbrt::pmem::kPageSize;
 using ebbrt::idt::ExceptionFrame;
-
 
 static inline void PrintExceptionFrame(ebbrt::idt::ExceptionFrame* ef) {
   kprintf_force("SS: %#018" PRIx64 " RSP: %#018" PRIx64 "\n", ef->ss,

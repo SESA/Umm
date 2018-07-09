@@ -33,16 +33,18 @@ public:
       kprintf_force("page misses: %d\n", count);
     }
     uintptr_t start; // starting virtual address of region
-    size_t length;
+    size_t length; //TODO(jmcadden): rename to size
     std::string name;
     bool writable = false;
     uint8_t page_order = UMM_REGION_PAGE_ORDER; // pow2 page size 
     size_t count=0; // miss counter
+    //TODO(jmcadden): Change data to void* or uintptr_t
     unsigned char *data = nullptr; // Location of backing data.
   }; // UmState::Region
 
-  UmState() = delete;
-  explicit UmState(uintptr_t entry) : entry_(entry){};
+  UmState(){};
+  explicit UmState(uintptr_t entry) { SetEntry(entry); };
+  void SetEntry(uintptr_t paddr) { ef.rip = paddr; }
   void AddRegion(Region &reg) { region_list_.push_back(reg); }
   void Print() {
     for (auto &reg : region_list_)
@@ -56,13 +58,11 @@ public:
         return reg;
       }
     }
-    // FIXME(jmcadden): Don't return empty region, or define NOP region
-    return std::move(Region());
+    kabort("Umm... No region found for addr %p\n", vaddr);
   }
-  uintptr_t entry_; // Instance entry point
-
-private:
   std::list<Region> region_list_;
+  uintptr_t entry; 
+  ExceptionFrame ef;
 }; // UmState
 } // umm
 
