@@ -13,6 +13,7 @@
 
 namespace umm{
 
+#define SOLO5_USR_REGION_SIZE 1<<28 
 
 struct ukvm_cpu_boot_info {
   uint64_t tsc_freq = 2599997000; 
@@ -36,8 +37,6 @@ static uint64_t wallclock_kludge() {
 }
 
 static void exit_kludge() {
-  // FIXME(jmcadden): We don't yet support exits
-  kprintf("Received an exit call \n");
   umm::manager->Start();
 }
 

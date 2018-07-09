@@ -27,7 +27,7 @@ public:
     }
     void Print() {
       kprintf_force("Region name: %s\n", name.c_str());
-      kprintf_force("       size: %d\n", length);
+      kprintf_force("       size: %llu\n", length);
       kprintf_force("  read-only: %d\n", !writable);
       kprintf_force("  page size: %d\n", kPageSize << page_order);
       kprintf_force("page misses: %d\n", count);

@@ -125,17 +125,22 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
     ret_state.AddRegion(reg);
   } // end Elf Section loop
 
-  // Add 'usr' region at the next available page
+  // TODO(jmcadden): Move the 'usr' and Solo5 logic out of the Elf loader
+
+  // Add 'usr' region beginning the next available page
   kassert(next_page_ptr);
+  size_t usr_len =
+      (kSlotEndVAddr + 1) - next_page_ptr; // Dedicate all remaining memory
+
   auto usr_reg = UmState::Region();
   usr_reg.start = next_page_ptr;
-  usr_reg.length = UMM_USR_REGION_SIZE;
+  usr_reg.length = usr_len; 
   usr_reg.name = std::string("usr");
   usr_reg.writable = true;
   ret_state.AddRegion(usr_reg);
 
   // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(next_page_ptr, UMM_USR_REGION_SIZE);
+  uint64_t argc = Solo5BootArguments(next_page_ptr, SOLO5_USR_REGION_SIZE);
 
   // Create the Um Instance and set boot configuration
   auto umi = std::make_unique<UmInstance>(ret_state);
