@@ -37,9 +37,9 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     *ef = caller_restore_frame_;
     set_status(finished);
   } else {
-    // If this context is not running, this is an jump into the instance. We
-    // backup the context of the client and edit the frame to "return" in to the
-    // instance
+    // If this context is not already running we treat this entry an jump into
+    // the instance. Backup the restore_frame (context) of the client and modify
+    // the existing frame to "return" back into the instance
     caller_restore_frame_ = *ef;
     ef->rip = umi_->sv_.ef.rip;
     ef->rdi = umi_->sv_.ef.rdi;
@@ -54,7 +54,8 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
   }
 }
 
-void umm::UmManager::UmmStatus::Set(umm::UmManager::Status new_status) {
+void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
+  auto now = ebbrt::clock::Wall::Now();
   switch (new_status) {
   case empty:
     if (s_ > loaded) // Don't unload if running or more
@@ -65,16 +66,22 @@ void umm::UmManager::UmmStatus::Set(umm::UmManager::Status new_status) {
       break;
     goto OK;
   case running:
-    if (s_ == empty) // Only run when loaded
+    if (s_ != loaded && s_ != snapshot) // Run when loaded or more
       break;
+    clock_ = ebbrt::clock::Wall::Now(); 
     goto OK;
   case snapshot:
     if (s_ != running) // Only snapshot when running <??
       break;
+    // Log execution time before taking snapshot. We'll resume the clock when running
+    runtime_ +=
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_).count();
     goto OK;
   case finished:
     if (s_ != running) // Only finish when running
       break;
+    runtime_ +=
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_).count();
     goto OK;
   default:
     break;
@@ -114,6 +121,8 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
     snap_sv->AddRegion(r);
   }
 
+  // XXX: More dragons...
+
   //   Interate the list of faulted_pages and map in each page
   for( auto vaddr : umi_->sv_.faulted_pages_ ){
     auto r = snap_sv->GetRegionOfAddr(vaddr);
@@ -132,6 +141,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
     std::memcpy((void *)(r.data + offset), (const void *)vaddr, kPageSize);
   }
 
+  // Save the snapshot and resume execution of the instance
   umi_snapshot_.SetValue(*snap_sv);
   set_status(running);
 }
@@ -167,16 +177,14 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   return std::move(tmp_um);
 }
 
-void umm::UmManager::Start() { // Enter
+void umm::UmManager::Start() { // TODO(jmcadden): Rename as Enter
   if (status() == loaded)
-    kprintf_force(GREEN
-                  "\nUmm... Kicking off the Um Instance (core #%d)\n" RESET,
+    kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
                   (size_t)ebbrt::Cpu::GetMine());
   trigger_entry_exception();
-  kprintf_force(GREEN "Umm... Returned from Um Instance (core #%d)\n" RESET,
-                (size_t)ebbrt::Cpu::GetMine());
-  umi_->Print();
-  set_status(running);
+  kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine(), status_.time());
+  //umi_->Print();
 }
 
 ebbrt::Future<umm::UmState> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
@@ -202,10 +210,5 @@ ebbrt::Future<umm::UmState> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   dr7.LEN0 = 0;
   dr7.set();
   return umi_snapshot_.GetFuture();
-}
-
-bool umm::UmManager::valid_address(uintptr_t vaddr) {
-  // Address within the virtual address range 
-  return ((vaddr >= kSlotStartVAddr) && (vaddr < kSlotEndVAddr));
 }
 
