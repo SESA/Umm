@@ -3,13 +3,17 @@ EXT_PATH := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # solo5
 SOLO5_DIR ?= $(EXT_PATH)/solo5
 SOLO5_OBJ ?= $(SOLO5_DIR)/kernel/ebbrt/solo5.o
-SOLO5_HW ?= $(SOLO5_DIR)/tests/test_hello/test_hello.ebbrt
 
 # rumprun
 RUMP_DIR ?= $(EXT_PATH)/rumprun
 RUMP_BAKE = $(RUMP_DIR)/rumprun-solo5/bin/rumprun-bake
 RUMP_SOLO5_X86_64=$(RUMP_DIR)/rumprun-solo5/rumprun-x86_64/lib
 RUMP_SOLO5_UKVM=$(RUMP_SOLO5_X86_64)/rumprun-solo5/libsolo5_ukvm.a
+
+RUMPRUN_CC= $(RUMP_DIR)/rumprun-solo5/bin/x86_64-rumprun-netbsd-gcc
+RUMPRUN_CXX= $(RUMP_DIR)/rumprun-solo5/bin/x86_64-rumprun-netbsd-g++
+RUMPRUN_CFLAGS =-Wall -Werror -Wmissing-prototypes -Wstrict-prototypes -g
+RUMPRUN_LDLIBS= -lrumprun_tester
 
 # rumprun-packages
 RUMPPACKDIR ?= $(EXT_PATH)/rumprun-packages

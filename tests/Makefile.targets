@@ -3,14 +3,55 @@
 -include ../../Makefile.common
 -include $(EXTDIR)/Makefile
 
-TARGET ?= nodejs # Default target. Additional targets: solo5-hello
+TARGET ?= nodejs # Default target
 
-# Copy target binary into local directly as 'target'
+.PHONY: nodejs solo5-abort solo5-blk solo5-exception solo5-globals solo5-hello solo5-ping solo5-quiet solo5-time
 
-solo5-hello: $(SOLO5_HW) 
-	$(INSTALL) -m 664 -D $< target
+#For all tests:
+#copy in the target binary named simply as 'target'
+
+# RUMP TARGETS 
+
+RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
+
+rump-hello: rumprun 
+	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPHELLOER) -o foo $(RUMPRUN_LDLIBS)
+	$(RUMP_BAKE) solo5_ukvm_net target foo 
 
 nodejs: $(NODEJS_BIN)
 	$(RUMP_BAKE) solo5_ukvm_net target $<
 
-.PHONY: solo5-hello nodejs
+# SOLO5 TARGETS
+
+solo5-abort: $(SOLO5_OBJ) # Success
+	$(INSTALL) -m 664 -D $(SOLO5_ABRT) target
+
+solo5-blk: $(SOLO5_OBJ) # Success
+	$(INSTALL) -m 664 -D $(SOLO5_BLK) target
+
+solo5-exception: $(SOLO5_OBJ) # EbbRT crashes - page fault  
+	$(INSTALL) -m 664 -D $(SOLO5_EXC) target
+
+solo5-globals: $(SOLO5_OBJ) # Success
+	$(INSTALL) -m 664 -D $(SOLO5_GLB) target
+
+solo5-hello: $(SOLO5_OBJ) # Success
+	$(INSTALL) -m 664 -D $(SOLO5_HW) target
+
+solo5-ping: $(SOLO5_OBJ) # Failed - command line error 
+	$(INSTALL) -m 664 -D $(SOLO5_PING) target
+
+solo5-quiet: $(SOLO5_OBJ) # Success 
+	$(INSTALL) -m 664 -D $(SOLO5_QUIET) target
+
+solo5-time: $(SOLO5_OBJ) # Failed - unknown
+	$(INSTALL) -m 664 -D $(SOLO5_TIME) target
+
+SOLO5_ABRT ?= $(SOLO5_DIR)/tests/test_abort/test_abort.ebbrt
+SOLO5_BLK ?= $(SOLO5_DIR)/tests/test_blk/test_blk.ebbrt
+SOLO5_EXC ?= $(SOLO5_DIR)/tests/test_exception/test_exception.ebbrt
+SOLO5_GLB ?= $(SOLO5_DIR)/tests/test_globals/test_globals.ebbrt
+SOLO5_HW ?= $(SOLO5_DIR)/tests/test_hello/test_hello.ebbrt
+SOLO5_PING ?= $(SOLO5_DIR)/tests/test_ping_serve/test_ping_serve.ebbrt
+SOLO5_QUIET ?= $(SOLO5_DIR)/tests/test_quiet/test_quiet.ebbrt
+SOLO5_TIME ?= $(SOLO5_DIR)/tests/test_time/test_time.ebbrt
