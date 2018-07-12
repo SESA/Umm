@@ -63,6 +63,7 @@ private:
 const uintptr_t kSlotStartVAddr = 0xFFFFC00000000000;
 const uintptr_t kSlotEndVAddr = 0xFFFFC07FFFFFFFFF;
 const uint64_t kSlotPageLength = 0x7FFFFFF;
+const uint16_t kSlotPML4Offset = 0x180;
 
 constexpr auto manager =
     ebbrt::EbbRef<UmManager>(UmManager::global_id);
