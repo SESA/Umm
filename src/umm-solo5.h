@@ -10,6 +10,8 @@
 #include "UmManager.h"
 
 #include <ebbrt/native/Clock.h>
+  
+const char opt_debug[] = "--solo5:debug";
 
 namespace umm{
 
@@ -45,8 +47,7 @@ static inline uint64_t Solo5BootArguments(uint64_t kernel_end, uint64_t mem_size
   auto kern_info = new struct ukvm_boot_info;
   kern_info->mem_size = mem_size;
   kern_info->kernel_end = kernel_end;
-  char opt_debug[] = "--solo5:debug";
-  kern_info->cmdline = opt_debug;
+  kern_info->cmdline = (char*) opt_debug;
   kern_info->cpu.ebbrt_printf_addr = (uint64_t)kprintf_force;
   kern_info->cpu.ebbrt_walltime_addr = (uint64_t)wallclock_kludge;
   kern_info->cpu.ebbrt_exit_addr = (uint64_t)exit_kludge;

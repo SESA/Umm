@@ -27,10 +27,10 @@ EBBRTAR=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-ar
 
 # Umm
 UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP 
+ifdef DEBUG  #e.g., $ make DEBUG=1
+UMM_CPP_FLAGS += -O0 -g3
+endif
 UMM_ARCH=x86_64
 UMM_ARFLAGS =rcs 
 UMM_INCLUDE_DIR ?= $(SRCDIR)
 UMM_INSTALL_DIR ?= $(INSTALLDIR)
-ifdef DEBUG
-UMM_CPP_FLAGS += -O0 -g3
-endif

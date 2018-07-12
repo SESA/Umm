@@ -18,12 +18,14 @@ namespace umm {
 class UmInstance {
 public:
   UmInstance() = delete;
-  explicit UmInstance(UmState sv);
+  explicit UmInstance(UmState sv) : sv_(sv) {};
+
   /** GetBackingPage - Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
+
+  // TODO(jmcadden): Move SetArgs into the UmState
   void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
   void Print();
-  UmState Snapshot(ebbrt::idt::ExceptionFrame *ef);
   size_t page_count = 0;
   UmState sv_;
 }; // umm::UmInstance

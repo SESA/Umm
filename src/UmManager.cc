@@ -12,7 +12,7 @@ extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
   umm::manager->process_checkpoint(ef);
-  kprintf(MAGENTA "Umm... Returning to execution\n" RESET);
+  kprintf(MAGENTA "Umm... Finished snapshot\n" RESET);
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
@@ -44,6 +44,12 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     ef->rip = umi_->sv_.ef.rip;
     ef->rdi = umi_->sv_.ef.rdi;
     ef->rsi = umi_->sv_.ef.rsi;
+
+    if( umi_->sv_.ef.rbp )
+      ef->rbp = umi_->sv_.ef.rbp;
+    if( umi_->sv_.ef.rsp )
+      ef->rsp = umi_->sv_.ef.rsp;
+    
     set_status(running);
   }
 }
@@ -79,14 +85,54 @@ OK:
 }
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
-  kprintf(RED "PROCESSING CHECKPOINT \n" RESET);
   kassert(status() != snapshot);
   set_status(snapshot);
-  snap_restore_frame_ = *ef;
-  //trigger_entry_exception(); 
-  //umi_->Print();
-  //umi_snapshot_.SetValue(umi_->Snapshot(ef));
-  kprintf(GREEN "ALL DONE CHECKPOINTING \n" RESET);
+
+  auto snap_sv = new UmState();
+  snap_sv->ef = *ef; 
+
+  // XXX: Here be Dragons...
+  
+  // Iterate the region list of the loaded umi
+  for (const auto &reg : umi_->sv_.region_list_) {
+    kprintf(CYAN "Umm... checkpointing %s region\n" RESET, reg.name.c_str());
+    UmState::Region r = reg;
+
+    if (r.writable) {
+      size_t plen;
+      // XXX: Special case usr region b/c its too big to malloc
+      if (reg.name == "usr") {
+        // Allocate a new (empty) region for the writable sections
+        plen = kPageSize;
+      }else{
+        plen = r.length + kPageSize - (r.length % kPageSize); // round up to full page
+      }
+      r.data = (unsigned char *)malloc(plen);
+      kprintf(CYAN "Umm... new data region for %s len=%d[%d] (%p)\n" RESET,
+              r.name.c_str(), plen, r.length, r.data);
+    }
+    snap_sv->AddRegion(r);
+  }
+
+  //   Interate the list of faulted_pages and map in each page
+  for( auto vaddr : umi_->sv_.faulted_pages_ ){
+    auto r = snap_sv->GetRegionOfAddr(vaddr);
+    kassert(r.writable);
+    size_t offset = r.GetOffset(vaddr);
+    // XXX: Special case usr region b/c its too big to malloc
+    if (r.name == "usr") {
+      // user region
+      offset = 0;
+    } else {
+      offset = r.GetOffset(vaddr);
+    }
+    kprintf( CYAN "Umm... capture page %p in %s(%d) |  r.data + offset (%p + %d)\n" RESET,
+        vaddr, r.name.c_str(), r.length, r.data, offset);
+    // We copy from vaddr directly because it should still be mapped
+    std::memcpy((void *)(r.data + offset), (const void *)vaddr, kPageSize);
+  }
+
+  umi_snapshot_.SetValue(*snap_sv);
   set_status(running);
 }
 
@@ -122,10 +168,13 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
 }
 
 void umm::UmManager::Start() { // Enter
-  if (status() == loaded )
-    kprintf_force(GREEN "\nUmm... Kicking off the Um Instance\n" RESET);
+  if (status() == loaded)
+    kprintf_force(GREEN
+                  "\nUmm... Kicking off the Um Instance (core #%d)\n" RESET,
+                  (size_t)ebbrt::Cpu::GetMine());
   trigger_entry_exception();
-  kprintf_force(GREEN "Umm... Returned from Um Instance\n" RESET);
+  kprintf_force(GREEN "Umm... Returned from Um Instance (core #%d)\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine());
   umi_->Print();
   set_status(running);
 }

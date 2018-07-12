@@ -51,17 +51,16 @@ public:
       reg.Print();
       kprintf_force("--\n");
   }
-  const Region &GetRegionOfAddr(uintptr_t vaddr) {
+  Region &GetRegionOfAddr(uintptr_t vaddr) {
     for (auto &reg : region_list_) {
       if (reg.AddrIsInRegion(vaddr)){
-        reg.count++;
         return reg;
       }
     }
     kabort("Umm... No region found for addr %p\n", vaddr);
   }
   std::list<Region> region_list_;
-  uintptr_t entry; 
+  std::vector<uintptr_t> faulted_pages_;
   ExceptionFrame ef;
 }; // UmState
 } // umm
