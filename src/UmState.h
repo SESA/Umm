@@ -9,12 +9,15 @@
 
 namespace umm {
 
-/** UmState
- *  Data type containing Umm Instance state
+/** UmSV - State Vector
+ *  A data type containing the raw execution state of the process. To be
+ * executed, an raw SV must be instantiated into a executable type (UmInstance).
+ *
+ * The SV originates from the PSML Research Group at Boston University
  */
 class UmState {
 public:
-  // UmState::Region Class
+  /** SV Region class */
   struct Region {
     bool AddrIsInRegion(uintptr_t vaddr) {
       return (vaddr >= start && vaddr < start + length);
@@ -22,7 +25,7 @@ public:
     size_t GetOffset(uintptr_t vaddr) {
       if (AddrIsInRegion(vaddr))
         return (vaddr - start);
-      else
+      else // FIXME: We should be warning or aborting here
         return 0;
     }
     void Print() {
@@ -30,16 +33,21 @@ public:
       kprintf_force("       size: %llu\n", length);
       kprintf_force("  read-only: %d\n", !writable);
       kprintf_force("  page size: %d\n", kPageSize << page_order);
-      kprintf_force("page misses: %d\n", count);
+      kprintf_force("page faults: %d\n", count);
     }
-    uintptr_t start; // starting virtual address of region
-    size_t length; //TODO(jmcadden): rename to size
+    /** Mostly-static state */
     std::string name;
+    uintptr_t start; /** Starting virtual address of region */
+    size_t length;   // TODO: rename to "size"
     bool writable = false;
-    uint8_t page_order = UMM_REGION_PAGE_ORDER; // pow2 page size 
-    size_t count=0; // miss counter
-    //TODO(jmcadden): Change data to void* or uintptr_t
-    unsigned char *data = nullptr; // Location of backing data.
+    uint8_t page_order = UMM_REGION_PAGE_ORDER; /** Pow2 page size to conform
+                                                   with EbbRT's PageAllocator
+                                                   interfaces */
+    unsigned char *data = nullptr;              // Location of backing data.
+                                                // TODO: Change to uintptr_t
+    /* Transient state */                       // XXX: Clear on copy?
+    size_t count = 0;                           /** Page faults on region */
+
   }; // UmState::Region
 
   UmState(){};
@@ -57,12 +65,12 @@ public:
         return reg;
       }
     }
-    kabort("Umm... No region found for addr %p\n", vaddr);
+    kabort("Umm... No region found for addr %p n", vaddr);
   }
-  std::list<Region> region_list_;
-  std::vector<uintptr_t> faulted_pages_;
+  std::list<Region> region_list_; // TODO: generic type 
+  std::vector<uintptr_t> faulted_pages_; //XXX: <-- KLUDGE!!
   ExceptionFrame ef;
+
 }; // UmState
 } // umm
-
 #endif // UMM_UM_STATE_H_

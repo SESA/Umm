@@ -8,29 +8,26 @@
 #include <ebbrt/native/VMemAllocator.h>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
-  kprintf(MAGENTA "Umm... Creating a snapshot\n" RESET);
+  kprintf(MAGENTA "Umm... Taking a snapshot\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
   umm::manager->process_checkpoint(ef);
-  kprintf(MAGENTA "Umm... Finished snapshot\n" RESET);
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
-  kprintf(CYAN "Umm... Handling breakpoint exception\n" RESET);
   umm::manager->process_resume(ef);
 }
 
 void umm::UmManager::Init() {
-  // Setup Ebb translation
+  // Setup multicore Ebb translation
   Create(UmManager::global_id);
-  // Setup page fault handler
+  // Reserve virtual region for slot and setup a fault handler 
   auto hdlr = std::make_unique<PageFaultHandler>();
   ebbrt::vmem_allocator->AllocRange(kSlotPageLength, kSlotStartVAddr,
                                     std::move(hdlr));
 }
 
 void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
-  //PrintExceptionFrame(ef);
   if (status() == running) {
     // If the instance is running this exception is treated as an exit to
     // restore context of the client who called Start()
@@ -121,7 +118,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
     snap_sv->AddRegion(r);
   }
 
-  // XXX: More dragons...
+  // XXX: More Dragons...
 
   //   Interate the list of faulted_pages and map in each page
   for( auto vaddr : umi_->sv_.faulted_pages_ ){
@@ -154,13 +151,17 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
-    kprintf(RED "SNAPSHOT PAGEFAULT! \n" RESET);
+    kprintf(RED "Umm... Snapshot Pagefault\n" RESET);
+
+  // TODO: Replace with our own mapping mechanism and semantics
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
+
   /* Pass to the mounted sv to select/allocate the backing page */
   auto physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
-  auto backing_page = Pfn::Down(physical_start_addr);
+  auto backing_page = Pfn::Down(physical_start_addr); // TODO: make this an assert
+
   /* Map backing page into core's page tables */
   ebbrt::vmem::MapMemory(virtual_page, backing_page, kPageSize);
 }
@@ -177,7 +178,7 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   return std::move(tmp_um);
 }
 
-void umm::UmManager::Start() { // TODO(jmcadden): Rename as Enter
+void umm::UmManager::Start() { 
   if (status() == loaded)
     kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
                   (size_t)ebbrt::Cpu::GetMine());
