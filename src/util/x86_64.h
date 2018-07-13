@@ -2,13 +2,12 @@
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
-#ifndef UMM_X86_64_H_
-#define UMM_X86_64_H_
+#ifndef UTIL_X86_64_H_
+#define UTIL_X86_64_H_
 
-/** umm-x86_64.h
+/** x86_64.h
  *  Architecture specific structures and definitions
  */
-namespace umm {
 namespace x86_64 {
 
 // DR0
@@ -68,6 +67,5 @@ typedef struct {
   enum RW_VALUES { INEXECUTION = 0, DATAWRITE = 1, IORW = 2, DATARW = 3 };
 } DR7;
 } // namespace x86_64
-} // namespace Om
 
-#endif // UMM_X86_64_H_ 
+#endif // UTIL_X86_64_H_ 

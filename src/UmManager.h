@@ -5,15 +5,15 @@
 #ifndef UMM_UM_MANAGER_H_
 #define UMM_UM_MANAGER_H_
 
-#include <ebbrt/EbbId.h> 
+#include <ebbrt/EbbId.h>
 #include <ebbrt/GlobalStaticIds.h>
 #include <ebbrt/MulticoreEbb.h>
 #include <ebbrt/native/VMemAllocator.h>
 
-#include "umm-common.h"
-#include "umm-x86_64.h"
 #include "UmInstance.h"
 #include "UmState.h"
+#include "umm-common.h"
+#include "util/x86_64.h"
 
 namespace umm {
 
