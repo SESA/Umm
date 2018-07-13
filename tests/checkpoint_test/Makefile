@@ -5,7 +5,7 @@ build: target.binelf $(UMM_INSTALL_DIR)/libumm.a
 	${EBBRTCXX} ${UMM_CPP_FLAGS} checkpoint_test.o target.binelf $(UMM_INSTALL_DIR)/libumm.a -T $(UMM_INCLUDE_DIR)/umm.lds -o checkpoint_test.elf
 	objcopy -O elf32-i386 checkpoint_test.elf checkpoint_test.elf32
 
--include ../Makefile.targets
+-include ../../Makefile.targets
 
 TARGET=solo5-hello
 

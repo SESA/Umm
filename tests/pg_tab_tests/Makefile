@@ -5,7 +5,7 @@ build: target.binelf $(UMM_INSTALL_DIR)/libumm.a
 	${EBBRTCXX} ${UMM_CPP_FLAGS} pg_tbl_mgr_test.o target.binelf $(UMM_INSTALL_DIR)/libumm.a -T $(UMM_INCLUDE_DIR)/umm.lds -o pg_tbl_mgr_test.elf
 	objcopy -O elf32-i386 pg_tbl_mgr_test.elf pg_tbl_mgr_test.elf32
 
--include ../Makefile.targets
+-include ../../Makefile.targets
 
 $(UMM_INSTALL_DIR)/libumm.a:
 	$(MAKE) -C ../../
