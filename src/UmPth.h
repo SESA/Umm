@@ -9,8 +9,9 @@
 
 namespace umm {
 
-/** UmPth
- *  Page table handler 
+/** 
+ *	UmPth - Page table handler type of an Um Instance 
+ * 	( Or an UmSV, not sure yet...)
  */
 class UmPth {
 public:

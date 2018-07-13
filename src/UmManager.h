@@ -11,7 +11,7 @@
 #include <ebbrt/native/VMemAllocator.h>
 
 #include "UmInstance.h"
-#include "UmState.h"
+#include "UmSV.h"
 #include "umm-common.h"
 #include "util/x86_64.h"
 
@@ -42,7 +42,7 @@ public:
   void Start(); // TODO(jmcadden): Rename as Enter?
 
   /** Extract an SV at a given symbol */
-  ebbrt::Future<UmState> SetCheckpoint(uintptr_t vaddr);
+  ebbrt::Future<UmSV> SetCheckpoint(uintptr_t vaddr);
 
   /** Remove instance from core */
   std::unique_ptr<UmInstance> Unload();
@@ -89,7 +89,7 @@ private:
   ExceptionFrame snap_restore_frame_; 
   std::unique_ptr<UmInstance> umi_;
   // TODO: Reusables or multi-promises 
-  ebbrt::Promise<UmState> umi_snapshot_;
+  ebbrt::Promise<UmSV> umi_snapshot_;
 };
 
 constexpr auto manager = 

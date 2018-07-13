@@ -2,20 +2,21 @@
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
-#ifndef UMM_UM_STATE_H_
-#define UMM_UM_STATE_H_
+#ifndef UMM_UM_SV_H_
+#define UMM_UM_SV_H_
 
 #include "umm-common.h"
 
 namespace umm {
 
 /** UmSV - State Vector
- *  A data type containing the raw execution state of the process. To be
- * executed, an raw SV must be instantiated into a executable type (UmInstance).
+ * A data type containing the raw execution state of the process. To be
+ * executed a raw SV must be instantiated into a executable type
+ * (UmInstance).
  *
- * The SV originates from the PSML Research Group at Boston University
+ * SV originates from the Om/PSML Research Group at Boston University
  */
-class UmState {
+class UmSV {
 public:
   /** SV Region class */
   struct Region {
@@ -48,10 +49,10 @@ public:
     /* Transient state */                       // XXX: Clear on copy?
     size_t count = 0;                           /** Page faults on region */
 
-  }; // UmState::Region
+  }; // UmSV::Region
 
-  UmState(){};
-  explicit UmState(uintptr_t entry) { SetEntry(entry); };
+  UmSV(){};
+  explicit UmSV(uintptr_t entry) { SetEntry(entry); };
   void SetEntry(uintptr_t paddr) { ef.rip = paddr; }
   void AddRegion(Region &reg) { region_list_.push_back(reg); }
   void Print() {
@@ -71,6 +72,6 @@ public:
   std::vector<uintptr_t> faulted_pages_; //XXX: <-- KLUDGE!!
   ExceptionFrame ef;
 
-}; // UmState
+}; // UmSV
 } // umm
-#endif // UMM_UM_STATE_H_
+#endif // UMM_UM_SV_H_

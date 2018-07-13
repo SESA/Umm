@@ -18,12 +18,12 @@ void AppMain() {
   auto uni = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
   umm::manager->Load(std::move(uni));
 
-  ebbrt::Future<umm::UmState> snap_f = umm::manager->SetCheckpoint(
+  ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
       umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
   umm::manager->Start();
 
-  snap_f.Then([](ebbrt::Future<umm::UmState> snap_f) {
+  snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
     auto snap = snap_f.Block().Get();
     // Deploy this snapshot on next core
     size_t core = ebbrt::Cpu::GetMine() + 1;

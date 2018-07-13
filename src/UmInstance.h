@@ -6,7 +6,7 @@
 #define UMM_UM_INSTANCE_H_
 
 #include "umm-common.h"
-#include "UmState.h"
+#include "UmSV.h"
 
 namespace umm {
 
@@ -17,27 +17,25 @@ namespace umm {
  * UmInstance contains an UmSV along with any instance specific state.  In the
  * future, the UmInstance maybe typed with a particular instance-type (for
  * example, A Solo5-instances which conforms to the solo5 boot parameters). In
- * this way, the UmSV can remain target-agnonstic, always displaying the raw
+ * this way, the UmSV can remain target-agnonstic, only presented the 'raw'
  * state of the process.  */
 class UmInstance {
 public:
   UmInstance() = delete;
-  explicit UmInstance(UmState sv) : sv_(sv) {};
+  explicit UmInstance(UmSV sv) : sv_(sv) {};
 
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
 
   // TODO(jmcadden): Move this interface into the UmSV
-  //	  						 Or, make it part of a virtual class
   void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
 
 	/* Dump state of the instance*/
   void Print();
-  size_t page_count = 0; // TODO: delete
-	
-	/* TODO(jmcadden): Consider making the sv_ a private member */
-  UmState sv_;
-	/* TODO: Move runtime clock from the manager into the instance */ 
+
+	// TODO: Add runtime duration into the instance
+  size_t page_count = 0; // TODO: replace with region-specific counter
+  UmSV sv_;
 }; // umm::UmInstance
 }
 

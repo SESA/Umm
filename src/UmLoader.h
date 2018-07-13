@@ -13,7 +13,7 @@
 #include "umm-solo5.h"
 
 #include "UmInstance.h"
-#include "UmState.h"
+#include "UmSV.h"
 
 // Start of target ELF.
 extern unsigned char _sv_start __attribute__((weak));

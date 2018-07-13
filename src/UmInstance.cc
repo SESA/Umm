@@ -21,7 +21,7 @@ void umm::UmInstance::Print() {
 
 uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
   auto vp_start_addr = Pfn::Down(vaddr).ToAddr();
-  umm::UmState::Region& reg = sv_.GetRegionOfAddr(vaddr);
+  umm::UmSV::Region& reg = sv_.GetRegionOfAddr(vaddr);
   reg.count++;
 
   // TODO(jmcadden): Support large pages per-region

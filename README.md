@@ -1,9 +1,12 @@
-# Umm…
-Unikernel Monitor Management library for EbbRT
+Umm is a implementation/remix of the Om execution model developed by the PSML Research Group at Boston University.
 
-Umm enables the execution of unikernel Monitors (`Um`) in a multicore baremetal runtime environment
+# Umm…
+Unikernel Monitor Management library for the EbbRT native runtime.
+
+Umm enables the execution of unikernel monitors (`Um`) in a multicore baremetal runtime environment (e.g., kvm-qemu).
 
 ## Build
+#### Requires the EbbRT toolchain
 
 ```$ git clone --recursive <this-repo>```
 

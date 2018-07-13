@@ -43,7 +43,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
   }
 
   // Create state structure to return from the call
-  auto ret_state = UmState(eh->e_entry);
+  auto ret_state = UmSV(eh->e_entry);
 
   // Load the section header from the elf
   Shdr *sht = (Shdr *)((char *)eh + eh->e_shoff);
@@ -87,7 +87,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
     kprintf("Checking section : %s\n", get_section_name(eh, sh));
 
     // New Region structure
-    auto reg = UmState::Region();
+    auto reg = UmSV::Region();
     reg.start = sh->sh_addr;
     reg.length = sh->sh_size;
     reg.name = std::string(get_section_name(eh, sh));
@@ -132,7 +132,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
   size_t usr_len =
       (kSlotEndVAddr + 1) - next_page_ptr; // Dedicate all remaining memory
 
-  auto usr_reg = UmState::Region();
+  auto usr_reg = UmSV::Region();
   usr_reg.start = next_page_ptr;
   usr_reg.length = usr_len; 
   usr_reg.name = std::string("usr");

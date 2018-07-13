@@ -92,7 +92,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   set_status(snapshot);
 
-  auto snap_sv = new UmState();
+  auto snap_sv = new UmSV();
   snap_sv->ef = *ef; 
 
   // XXX: Here be Dragons...
@@ -100,7 +100,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   // Iterate the region list of the loaded umi
   for (const auto &reg : umi_->sv_.region_list_) {
     kprintf(CYAN "Umm... checkpointing %s region\n" RESET, reg.name.c_str());
-    UmState::Region r = reg;
+    UmSV::Region r = reg;
 
     if (r.writable) {
       size_t plen;
@@ -188,7 +188,7 @@ void umm::UmManager::Start() {
   //umi_->Print();
 }
 
-ebbrt::Future<umm::UmState> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
+ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   kassert(valid_address(vaddr));
 
   x86_64::DR7 dr7;
