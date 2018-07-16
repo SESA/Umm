@@ -45,14 +45,6 @@ extern const char* level_names[];
 //   simple_pte* linAddrToPTE(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
 //   simple_pte* linAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte* root, unsigned char lvl);
 
-//   phys_addr getPhysAddrRec(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
-//   phys_addr getPhysAddrRecHelper(lin_addr la, uint64_t* offsets, simple_pte* root, unsigned char lvl);
-
-//   simple_pte *getPML4Root();
-//   simple_pte *getPDPTRoot();
-//   simple_pte* getCR3Addr();
-//   bool isLeaf(simple_pte *pte, unsigned char lvl);
-//   bool exists(simple_pte *pte);
 //   void countAllocatedPagesHelper(uint64_t *counts, simple_pte *root, unsigned char lvl);
 //   void countAllocatedPages();
 //   void countDirtyPages();
@@ -163,24 +155,50 @@ static_assert(sizeof(lin_addr) == sizeof(uint64_t), "Bad lin_addr SZ");
 
 class UmPgTblMgr {
 public:
-  void Init();
-  void walkPgTblForDirty();
-  simple_pte* addrToPTE(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
-    phys_addr getPhysAddrRec(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
-    phys_addr getPhysAddrRecHelper(lin_addr la, uint64_t* offsets, simple_pte* root, unsigned char lvl);
+  static void countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void traverseValidPages(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
+  simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
+                        unsigned char lvl = 4);
+  static phys_addr getPhysAddrRec(lin_addr la, simple_pte *root = nullptr,
+                           unsigned char lvl = 4);
+  static phys_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
+
+  static simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
+                                  lin_addr virt, unsigned char rootLvl,
+                                  unsigned char mapLvl, unsigned char curLvl);
+
+  static void traverseMappedPages();
+  static simple_pte *getSlotPDPTRoot();
 
 private:
-  lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
-  lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);
-  simple_pte* mapIntoPgTbl(simple_pte* root, lin_addr phys, lin_addr virt, unsigned char rootLvl, unsigned char mapLvl, unsigned char curLvl);
-  simple_pte* aAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte* root, unsigned char lvl);
+  UmPgTblMgr(); // Don't instantiate.
+
+  static void countDirtyPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void countAccessedPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+
+  static void traverseValidPagesHelper(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
+  static lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);
+  simple_pte *aAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte *root,
+                               unsigned char lvl);
   lin_addr cr3ToAddr();
-  simple_pte* nextTableOrFrame(simple_pte* pg_tbl_start, uint64_t pg_tbl_offset, unsigned char lvl);
-  void walkPgTblForDirtyHelper(uint64_t *counts, simple_pte *root, unsigned char lvl, uint64_t *idx);
-  simple_pte* getPML4Root();
-  simple_pte* getPDPTRoot();
-  bool exists(simple_pte *pte);
-  bool isLeaf(simple_pte *pte, unsigned char lvl);
+  static simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
+                               unsigned char lvl);
+  static simple_pte *walkPgTblCopyDirtyHelper(uint64_t *counts,
+                                              simple_pte *root,
+                                              simple_pte *copy,
+                                              unsigned char lvl, uint64_t *idx);
+  static simple_pte *getPML4Root();
+  static bool isLeaf     (simple_pte *pte, unsigned char lvl);
+  static bool exists     (simple_pte *pte);
+  static bool isAccessed (simple_pte *pte);
+  static bool isDirty    (simple_pte *pte);
+  static bool isReadOnly (simple_pte *pte);
+  static bool isWritable (simple_pte *pte);
 };
 
 } // namespace umm
