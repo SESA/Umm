@@ -40,40 +40,6 @@ lin_addr getPhysPg(uint8_t sz){
   return la;
 }
 
-void testMapping4K(){
-  printf(YELLOW "%s\n" RESET, __func__);
-
-  lin_addr phys           = getPhysPg(_4K__);   // Get physical addr.
-  simple_pte *root        = 0x0;                // Not given, create new one.
-  lin_addr virt; virt.raw = 0xffffc00000fd7000; // Somewhere in the slot.
-  uint8_t rootLvl         = PDPT_LEVEL;         // Lvl the table starts at.
-  uint8_t mapLvl          = PT_LEVEL;           // Lvl mapping occurs at.
-  uint8_t curLvl          = rootLvl;            // Tmp variable for traversing PT
-
-  printf("Phys is %lx\n", phys.raw);
-
-  // The mapping happens here.
-  simple_pte *table_top = UmPgTblMgr::mapIntoPgTbl(root, phys, virt, rootLvl, mapLvl, curLvl);
-
-  phys_addr pa = UmPgTblMgr::getPhysAddrRec(virt, table_top, 3);
-
-  printf(GREEN "Query for backing page: virt %lx -> %lx\n", virt.raw, pa.raw);
-
-  printf("Table top at %p\n" RESET, table_top);
-  kassert(phys.raw == pa.raw);
-  printf("MAP 4K PAGE TEST PASSED\n" RESET);
-}
-
-void testRemapping4k(){
-  printf(YELLOW "%s\n" RESET, __func__);
-  testMapping4K();
-  testMapping4K();
-}
-
-void testMultipleMappings(){
-  printf(YELLOW "%s\n" RESET, __func__);
-  testMapping4K();
-}
 
 void copyOnWrite(){
   printf(YELLOW "%s\n" RESET, __func__);
@@ -159,16 +125,125 @@ void testTraverseVaildPages(){
   UmPgTblMgr::traverseValidPages();
 }
 
+void map4K(){
+  printf(YELLOW "%s\n" RESET, __func__);
+
+  lin_addr phys           = getPhysPg(_4K__);   // Get physical addr.
+  simple_pte *root        = 0x0;                // Not given, create new one.
+  lin_addr virt; virt.raw = 0xffffc00000fd7000; // Somewhere in the slot.
+  uint8_t rootLvl         = PDPT_LEVEL;         // Lvl the table starts at.
+  uint8_t mapLvl          = PT_LEVEL;           // Lvl mapping occurs at.
+  uint8_t curLvl          = rootLvl;            // Tmp variable for traversing PT
+
+  printf("Phys is %lx\n", phys.raw);
+
+  // The mapping happens here.
+  simple_pte *table_top = UmPgTblMgr::mapIntoPgTbl(root, phys, virt, rootLvl, mapLvl, curLvl);
+
+  phys_addr pa = UmPgTblMgr::getPhysAddrRec(virt, table_top, 3);
+
+  printf(GREEN "Query for backing page: virt %lx -> %lx\n", virt.raw, pa.raw);
+
+  printf("Table top at %p\n" RESET, table_top);
+  kassert(phys.raw == pa.raw);
+  printf("MAP 4K PAGE TEST PASSED\n" RESET);
+}
+
+simple_pte*
+testMapping4kHelper(simple_pte *root, lin_addr phys, lin_addr virt){
+
+  printf(YELLOW "This bad boy should get mapped by: ");
+  for (int i=4; i>0; i--){
+    printf(CYAN "%u ", virt[i]);
+  }
+  printf(RESET " ->" RED "%p\n" RESET, phys);
+
+  root = UmPgTblMgr::mapIntoPgTbl(root, phys, virt,
+                           (unsigned char)3, (unsigned char)1, (unsigned char)3);
+
+  printf(YELLOW "Sanity check, dump counts of valid PTEs\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgr::countValidPTEs(counts, root, PDPT_LEVEL);
+  printCounts(counts);
+
+  // UmPgTblMgr::dumpTableAddrs(root, PDPT_LEVEL);
+  printf(YELLOW "Dump all branches of page table\n" RESET);
+  UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  // printf("Let's recover that mapping in 2 ways, first through the installed page table:\n");
+  // phys_addr pa1 = UmPgTblMgr::getPhysAddrRec(virt);
+
+  // printf("Now through the new page table at %p.");
+  // phys_addr pa2 = UmPgTblMgr::getPhysAddrRec(virt, );
+
+  return root;
+}
+
+void testMapping4K(){
+  // All don't exist.
+  // 384, 0, 7, 472,
+  lin_addr phys, virt;
+
+  phys.raw = 0x23a38f000;
+  virt.raw = 0xffffc00000fd8000;
+  simple_pte *root = nullptr;
+  root = testMapping4kHelper(root, phys, virt);
+
+  // All do exist.
+  // 384, 0, 7, 502,
+  phys.raw = 0x23a391000;
+  virt.raw = 0xffffc00000ff6000;
+  root = testMapping4kHelper(root, phys, virt);
+
+  // pdpt exists, not dir or pt
+  // 384, 0, 8, 0,
+  phys.raw = 0x23a39b000;
+  virt.raw = 0xffffc00001000000;
+  root = testMapping4kHelper(root, phys, virt);
+}
+
+void testRemapping4k(){
+  printf(YELLOW "%s\n" RESET, __func__);
+  testMapping4K();
+  testMapping4K();
+}
+
+void testMultipleMappings(){
+  printf(YELLOW "%s\n" RESET, __func__);
+  testMapping4K();
+}
+
+extern simple_pte *dbPte;
 void AppMain() {
 
-  testCountDirtyPagesInSlot();
+  // testMapping4K();
 
-  while(1);
+  runHelloWorld();
+
+  std::vector<uint64_t> ValidPTECounts(5); // Vec of size 5, zero elements.
+
+  // UmPgTblMgr::countValidPTEs(ValidPTECounts, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL);
+  UmPgTblMgr::countDirtyPages(ValidPTECounts, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL);
+  printf("After HW, # dirty pages in slot \n");
+  printCounts(ValidPTECounts);
+
   printf(CYAN "Bout to start copy of dirty pages\n" RESET);
   simple_pte *copyPT = UmPgTblMgr::walkPgTblCopyDirty(nullptr);
   printf(CYAN "Done copy of dirty pages\n" RESET);
 
-  printf("Copy of dirty pages at %p\n", copyPT);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+  printf("Look at Valid Pages\n");
+  UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
+  printCounts(counts);
 
-  // printf("result is %d \n", foo(result));
+
+  while(1);
+  dbPte->printCommon();
+  printf("Look at root new table\n");
+  copyPT->printCommon();
+
+  // UmPgTblMgr::countDirtyPages(counts, copyPT, PDPT_LEVEL);
+  // UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
+  // printCounts(counts);
+
 }

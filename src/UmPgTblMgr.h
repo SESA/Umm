@@ -158,6 +158,7 @@ public:
   static void countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void traverseValidPages(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
   simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
@@ -172,13 +173,16 @@ public:
 
   static void traverseMappedPages();
   static simple_pte *getSlotPDPTRoot();
-
+  static void dumpTableAddrs(simple_pte *root, unsigned char lvl);
+  static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
 private:
   UmPgTblMgr(); // Don't instantiate.
 
   static void countDirtyPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countAccessedPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+
+  static void countValidPTEsHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
   static void traverseValidPagesHelper(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
@@ -188,10 +192,10 @@ private:
   lin_addr cr3ToAddr();
   static simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
                                unsigned char lvl);
-  static simple_pte *walkPgTblCopyDirtyHelper(uint64_t *counts,
-                                              simple_pte *root,
+  static simple_pte *walkPgTblCopyDirtyHelper(simple_pte *root,
                                               simple_pte *copy,
-                                              unsigned char lvl, uint64_t *idx);
+                                              unsigned char lvl,
+                                              uint64_t *idx);
   static simple_pte *getPML4Root();
   static bool isLeaf     (simple_pte *pte, unsigned char lvl);
   static bool exists     (simple_pte *pte);
