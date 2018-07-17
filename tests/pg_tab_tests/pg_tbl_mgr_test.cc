@@ -120,10 +120,10 @@ void testCountDirtyPagesInSlot(){
   printCounts(counts);
 }
 
-void testTraverseVaildPages(){
-  printf(YELLOW "%s\n" RESET, __func__);
-  UmPgTblMgr::traverseValidPages();
-}
+// void testTraverseVaildPages(){
+//   printf(YELLOW "%s\n" RESET, __func__);
+//   UmPgTblMgr::traverseValidPages();
+// }
 
 void map4K(){
   printf(YELLOW "%s\n" RESET, __func__);
@@ -132,7 +132,7 @@ void map4K(){
   simple_pte *root        = 0x0;                // Not given, create new one.
   lin_addr virt; virt.raw = 0xffffc00000fd7000; // Somewhere in the slot.
   uint8_t rootLvl         = PDPT_LEVEL;         // Lvl the table starts at.
-  uint8_t mapLvl          = PT_LEVEL;           // Lvl mapping occurs at.
+  uint8_t mapLvl          = TBL_LEVEL;           // Lvl mapping occurs at.
   uint8_t curLvl          = rootLvl;            // Tmp variable for traversing PT
 
   printf("Phys is %lx\n", phys.raw);
@@ -159,7 +159,7 @@ testMapping4kHelper(simple_pte *root, lin_addr phys, lin_addr virt){
   printf(RESET " ->" RED "%p\n" RESET, phys);
 
   root = UmPgTblMgr::mapIntoPgTbl(root, phys, virt,
-                           (unsigned char)3, (unsigned char)1, (unsigned char)3);
+                           (unsigned char)PDPT_LEVEL, (unsigned char)TBL_LEVEL, (unsigned char)PDPT_LEVEL);
 
   printf(YELLOW "Sanity check, dump counts of valid PTEs\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
@@ -167,14 +167,8 @@ testMapping4kHelper(simple_pte *root, lin_addr phys, lin_addr virt){
   UmPgTblMgr::countValidPTEs(counts, root, PDPT_LEVEL);
   printCounts(counts);
 
-  // UmPgTblMgr::dumpTableAddrs(root, PDPT_LEVEL);
   printf(YELLOW "Dump all branches of page table\n" RESET);
   UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
-  // printf("Let's recover that mapping in 2 ways, first through the installed page table:\n");
-  // phys_addr pa1 = UmPgTblMgr::getPhysAddrRec(virt);
-
-  // printf("Now through the new page table at %p.");
-  // phys_addr pa2 = UmPgTblMgr::getPhysAddrRec(virt, );
 
   return root;
 }
@@ -213,11 +207,7 @@ void testMultipleMappings(){
   testMapping4K();
 }
 
-extern simple_pte *dbPte;
-void AppMain() {
-
-  // testMapping4K();
-
+void testCopyDirtyPages4K(){
   runHelloWorld();
 
   std::vector<uint64_t> ValidPTECounts(5); // Vec of size 5, zero elements.
@@ -235,15 +225,38 @@ void AppMain() {
   printf("Look at Valid Pages\n");
   UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
   printCounts(counts);
+}
 
+// void testMapping2M(){
+//   // All don't exist.
+//   // 384, 0, 7, 472,
+//   lin_addr phys, virt;
 
-  while(1);
-  dbPte->printCommon();
-  printf("Look at root new table\n");
-  copyPT->printCommon();
+//   phys.raw = 0x23a38f000;
+//   virt.raw = 0xffffc00000fd8000;
+//   simple_pte *root = nullptr;
+//   root = testMapping4kHelper(root, phys, virt);
 
-  // UmPgTblMgr::countDirtyPages(counts, copyPT, PDPT_LEVEL);
-  // UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
-  // printCounts(counts);
+//   // All do exist.
+//   // 384, 0, 7, 502,
+//   phys.raw = 0x23a391000;
+//   virt.raw = 0xffffc00000ff6000;
+//   root = testMapping4kHelper(root, phys, virt);
 
+//   // pdpt exists, not dir or pt
+//   // 384, 0, 8, 0,
+//   phys.raw = 0x23a39b000;
+//   virt.raw = 0xffffc00001000000;
+//   root = testMapping4kHelper(root, phys, virt);
+// }
+
+void testDumpSystemValidPages(){
+  UmPgTblMgr::dumpFullTableAddrs(UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+  UmPgTblMgr::countValidPages(counts);
+  printCounts(counts);
+}
+
+void AppMain() {
+  testDumpSystemValidPages();
 }

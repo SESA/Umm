@@ -14,11 +14,12 @@
 #include <vector>
 // #include <inttypes.h>
 
-
 const unsigned char pgShifts[] = {0, SMALL_PG_SHIFT, MED_PG_SHIFT, LG_PG_SHIFT};
 
+const uint64_t pgBytes[] = {0, 1ULL<<SMALL_PG_SHIFT, 1UL<<MED_PG_SHIFT, 1UL<<LG_PG_SHIFT};
+
 const char* level_names[] = {"NO_LEVEL",
-                             "PT_LEVEL",
+                             "TBL_LEVEL",
                              "DIR_LEVEL",
                              "PDPT_LEVEL",
                              "PML4_LEVEL"};
@@ -149,7 +150,7 @@ void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,
     if (!exists(root + i)) continue;
 
     counts[lvl]++;
-    if(lvl > PT_LEVEL){
+    if(lvl > TBL_LEVEL){
       countValidPTEsHelper(counts, nextTableOrFrame(root, i, lvl), lvl - 1);
     }
   }
@@ -195,28 +196,28 @@ void UmPgTblMgr::countValidPages(std::vector<uint64_t> &counts, simple_pte *root
   countValidPagesHelper(counts, root, lvl);
 }
 
-void UmPgTblMgr::traverseValidPagesHelper(simple_pte *root, uint8_t lvl) {
-  for (int i = 0; i < 512; i++) {
-    if (!exists(root + i))
-      continue;
-    if (isLeaf(root + i, lvl)) {
-    } else {
-      traverseValidPagesHelper(nextTableOrFrame(root, i, lvl), lvl - 1);
-    }
-  }
-}
+// void UmPgTblMgr::traverseValidPagesHelper(simple_pte *root, uint8_t lvl) {
+//   for (int i = 0; i < 512; i++) {
+//     if (!exists(root + i))
+//       continue;
+//     if (isLeaf(root + i, lvl)) {
+//     } else {
+//       traverseValidPagesHelper(nextTableOrFrame(root, i, lvl), lvl - 1);
+//     }
+//   }
+// }
 
-void UmPgTblMgr::traverseValidPages(simple_pte *root, uint8_t lvl){
-  // Going to grab PML4, so better be lvl 4.
-  if(root == nullptr){
-    kassert(lvl == 4);
-  }
+// void UmPgTblMgr::traverseValidPages(simple_pte *root, uint8_t lvl){
+//   // Going to grab PML4, so better be lvl 4.
+//   if(root == nullptr){
+//     kassert(lvl == 4);
+//   }
 
-  if (root == nullptr){
-    root = getPML4Root();
-  }
-  traverseValidPagesHelper(root, lvl);
-}
+//   if (root == nullptr){
+//     root = getPML4Root();
+//   }
+//   traverseValidPagesHelper(root, lvl);
+// }
 
 phys_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
   printf("la is %#0lx, offset is %lu, root is %p, lvl is %u\n", la.raw, la[lvl], root, lvl);
@@ -232,9 +233,9 @@ phys_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsign
     root = nextTableOrFrame(root, la[lvl], lvl);
     phys_addr.raw = (uint64_t)root;
     switch (lvl) {
-    case PDPT__: phys_addr.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
-    case DIR__: phys_addr.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
-    case TAB__: phys_addr.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
+    case PDPT_LEVEL: phys_addr.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
+    case DIR_LEVEL: phys_addr.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
+    case TBL_LEVEL: phys_addr.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
     printf("bout to return helper\n");
     return phys_addr;
   }
@@ -249,16 +250,16 @@ phys_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/,
   // Error checks and hands off to helper.
 
   // Valid range for 4 level paging.
-  kassert(lvl >= TAB__ && lvl <= PML4__);
+  kassert(lvl >= TBL_LEVEL && lvl <= PML4_LEVEL);
 
   if (root == nullptr) {
     // If coming from top, gotta get root from CR3.
-    if (lvl == PML4__) {
+    if (lvl == PML4_LEVEL) {
       root = getPML4Root();
     }
   } else {
     // If have root, better be below pml4.
-    kassert(lvl < PML4__);
+    kassert(lvl < PML4_LEVEL);
   }
 
   // Better have a root to follow.
@@ -338,13 +339,13 @@ lin_addr simple_pte::pageTabEntToAddr(unsigned char lvl) {
   // Refer to figure 4-11 in Vol 3A of the intel man.
   // printf("in page tab ent to addr lvl is %d, maps is %u \n", lvl, decompCommon.MAPS);
   switch (lvl) {
-  case PML4__:
+  case PML4_LEVEL:
     // printf("PML4\n");
     // This PML4E points to a PDPT
     la.raw = (uint64_t)decompCommon.PG_TBL_ADDR << SMALL_PG_SHIFT;
     break;
 
-  case PDPT__:
+  case PDPT_LEVEL:
     // printf("PDPT\n");
     if (decompCommon.MAPS) {
       // This PDPTE maps a 1GB page.
@@ -355,7 +356,7 @@ lin_addr simple_pte::pageTabEntToAddr(unsigned char lvl) {
     }
     break;
 
-  case DIR__:
+  case DIR_LEVEL:
     // printf("DIR\n");
     // TODO(tommyu): Put this in struct.
     if (decompCommon.MAPS) {
@@ -367,7 +368,7 @@ lin_addr simple_pte::pageTabEntToAddr(unsigned char lvl) {
     }
     break;
 
-  case TAB__:
+  case TBL_LEVEL:
     // printf("TAB\n");
     // This PTE maps a 4KB page.
     la.raw = (uint64_t)decomp4K.PAGE_NUMBER << SMALL_PG_SHIFT;
@@ -453,7 +454,7 @@ bool UmPgTblMgr::isAccessed(simple_pte *pte){
 }
 
 bool UmPgTblMgr::isLeaf(simple_pte *pte, unsigned char lvl){
-  if(lvl == TAB__){
+  if(lvl == TBL_LEVEL){
     return true;
   }
 
@@ -487,14 +488,14 @@ simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) 
 lin_addr UmPgTblMgr::reconstructLinAddrPgFromOffsets(uint64_t *idx){
   lin_addr la;
   la.raw = 0;
-  la.tblOffsets.PML4 = idx[PML4__];
-  la.tblOffsets.PDPT = idx[PDPT__];
-  la.tblOffsets.DIR = idx[DIR__];
-  la.tblOffsets.TAB = idx[TAB__];
+  la.tblOffsets.PML4 = idx[PML4_LEVEL];
+  la.tblOffsets.PDPT = idx[PDPT_LEVEL];
+  la.tblOffsets.DIR = idx[DIR_LEVEL];
+  la.tblOffsets.TAB = idx[TBL_LEVEL];
 
   // HACK(tommyu): Something about cannonical addressing? Need to do some reading.
   // Think this should only be applied if pml4 num >= 256 aka 0x100, half 512, 0x200.
-  if (idx[PML4__] >= 0x100)
+  if (idx[PML4_LEVEL] >= 0x100)
     la.raw |= 0xffffUL << 48;
   return la;
 }
@@ -553,14 +554,8 @@ simple_pte *UmPgTblMgr::mapIntoPgTbl(simple_pte *root, lin_addr phys,
                                      unsigned char curLvl) {
   kassert(rootLvl >= mapLvl);
   kassert(rootLvl >= curLvl);
-  kassert(rootLvl <= PML4_LEVEL && rootLvl >= PT_LEVEL);
+  kassert(rootLvl <= PML4_LEVEL && rootLvl >= TBL_LEVEL);
   kassert(mapLvl <= PDPT_LEVEL);
-
-  // printf(
-  //     YELLOW
-  //     "root %lx, phys %lx, virt %lx, rootLvl %u, mapLvl %u, curLvl %u\n"
-  //     RESET,
-  //     root, phys, virt, rootLvl, mapLvl, curLvl);
 
   // No pg table here, need to allocate.
   if (root == nullptr) {
@@ -568,7 +563,7 @@ simple_pte *UmPgTblMgr::mapIntoPgTbl(simple_pte *root, lin_addr phys,
     auto page = ebbrt::page_allocator->Alloc();
     kbugon(page == Pfn::None());
     auto page_addr = page.ToAddr();
-    memset((void *)page_addr, 0, SMALL_PG_BYTES);
+    memset((void *)page_addr, 0, pgBytes[TBL_LEVEL]);
     root = (simple_pte *)page_addr;
   }
 
@@ -643,7 +638,7 @@ void pgTabTool::countAllocatedPagesHelperImp(uint64_t* counts, simple_pte* root,
   for (int i = 0; i < 512; i++) {
     // Only deal with the slot.
     if (!exists(root + i)) continue;
-    if (lvl == PML4__ && i != 384) continue;
+    if (lvl == PML4_LEVEL && i != 384) continue;
     counts[4] += 1;
 
     // printf("Entry %x exists\n", i);

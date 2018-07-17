@@ -7,22 +7,23 @@
 #define MED_PG_SHIFT 21
 #define LG_PG_SHIFT 30
 
-#define SMALL_PG_BYTES 1UL << SMALL_PG_SHIFT
-
+// Size of shift for various pages, 12, 23, 30.
 extern const unsigned char pgShifts[];
 
-#define PML4__ 4
-#define PDPT__ 3
-#define DIR__  2
-#define TAB__  1
+// Number of bytes for various page sizes.
+extern const uint64_t pgBytes[];
 
+// Indexed names for debugging printers..
+extern const char* level_names[];
+
+// Magic PML4 entry chosen for slot.
 #define SLOT_PML4_NUM 0x180
 
 enum Level {
   PML4_LEVEL = 4,
   PDPT_LEVEL = 3,
-  PD_LEVEL = 2,
-  PT_LEVEL = 1,
+  DIR_LEVEL = 2,
+  TBL_LEVEL = 1,
   NO_LEVEL = 0
 };
 
@@ -31,27 +32,6 @@ enum PgSz {
   _2M__ = 2,
   _4K__ = 1
 };
-
-
-extern const char* level_names[];
-
-
-
-// class pgTabTool {
-// public:
-//   simple_pte* linAddrToPTEGetOrCreate(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
-//   simple_pte* linAddrToPTEGetOrCreateHelper(lin_addr la, uint64_t *offsets, simple_pte* root, unsigned char lvl);
-
-//   simple_pte* linAddrToPTE(lin_addr la, simple_pte* root = nullptr, unsigned char lvl = 4);
-//   simple_pte* linAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte* root, unsigned char lvl);
-
-//   void countAllocatedPagesHelper(uint64_t *counts, simple_pte *root, unsigned char lvl);
-//   void countAllocatedPages();
-//   void countDirtyPages();
-
-//   void countAllocatedPagesHelperImp(uint64_t *counts, simple_pte *root, unsigned char lvl);
-//   void countAllocatedPagesImp();
-// };
 
 namespace umm {
 
@@ -155,36 +135,55 @@ static_assert(sizeof(lin_addr) == sizeof(uint64_t), "Bad lin_addr SZ");
 
 class UmPgTblMgr {
 public:
+  // NOTE: NYI. Higher level operations on page tables.
+  static void areEqual();
+  static void isSubset();
+  static void difference();
+
+  // Counters
+  // TODO(tommyu): Do we want defaults? Maybe not.
   static void countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void traverseValidPages(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+
+  // static void traverseValidPages(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+
+  // Copiers
   static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
+
+  // Extractors
   simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
                         unsigned char lvl = 4);
+  // Chasers
   static phys_addr getPhysAddrRec(lin_addr la, simple_pte *root = nullptr,
                            unsigned char lvl = 4);
-  static phys_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
 
+  // Mappers
   static simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
                                   lin_addr virt, unsigned char rootLvl,
                                   unsigned char mapLvl, unsigned char curLvl);
 
-  static void traverseMappedPages();
+  // Root Getters
   static simple_pte *getSlotPDPTRoot();
+  static simple_pte *getPML4Root();
+
+  // Printers / DBers.
+  // TODO(tommyu): Fix these names.
   static void dumpTableAddrs(simple_pte *root, unsigned char lvl);
   static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
+
 private:
   UmPgTblMgr(); // Don't instantiate.
 
+  // Counter Helpers
   static void countDirtyPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countAccessedPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-
   static void countValidPTEsHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
-  static void traverseValidPagesHelper(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  // static void traverseValidPagesHelper(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+
   static lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
   static lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);
   simple_pte *aAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte *root,
@@ -196,7 +195,8 @@ private:
                                               simple_pte *copy,
                                               unsigned char lvl,
                                               uint64_t *idx);
-  static simple_pte *getPML4Root();
+
+  static phys_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
   static bool isLeaf     (simple_pte *pte, unsigned char lvl);
   static bool exists     (simple_pte *pte);
   static bool isAccessed (simple_pte *pte);
