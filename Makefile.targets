@@ -15,8 +15,9 @@ TARGET ?= nodejs # Default target
 RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
 
 rump-hello: rumprun 
-	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPHELLOER) -o foo $(RUMPRUN_LDLIBS)
-	$(RUMP_BAKE) solo5_ukvm_net target foo 
+	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPHELLOER) -o $< $(RUMPRUN_LDLIBS)
+	$(RUMP_BAKE) solo5_ukvm_net target $< 
+	$(RM) $<
 
 nodejs: $(NODEJS_BIN)
 	$(RUMP_BAKE) solo5_ukvm_net target $<
