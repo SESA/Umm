@@ -572,6 +572,7 @@ uint16_t lin_addr::operator[](uint8_t idx){
 
 bool dbBool = true;
 
+// TODO Fix this name
 void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
@@ -581,16 +582,7 @@ void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
   simple_pte pte; pte.raw = 0;
   pte.decompCommon.SEL = 1;
   pte.decompCommon.RW = 1;
-  pte.decompCommon.US = 1;
-  pte.decompCommon.PWT = 0;
-  pte.decompCommon.PCD = 0;
-  pte.decompCommon.A = 0;
-
-  pte.decompCommon.DIRTY = 0;
-  pte.decompCommon.MAPS = 0;
-  pte.decompCommon.WHOCARES2 = 0;
   pte.decompCommon.PG_TBL_ADDR = (uint64_t)tab >> 12;
-  pte.decompCommon.RES = 0;
 
   raw = pte.raw;
 }

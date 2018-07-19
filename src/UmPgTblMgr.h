@@ -45,6 +45,7 @@ enum PgSz {
 
 namespace umm {
 
+  // TODO(tommyu):where should this go?
 class lin_addr;
 // Simplified page table entry.
 class simple_pte {

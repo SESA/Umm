@@ -6,6 +6,8 @@
 #include "UmManager.h"
 
 #include <ebbrt/native/VMemAllocator.h>
+#include "UmPgTblMgr.h"
+#include <atomic>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   kprintf(MAGENTA "Umm... Taking a snapshot\n" RESET);
@@ -42,11 +44,12 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     ef->rdi = umi_->sv_.ef.rdi;
     ef->rsi = umi_->sv_.ef.rsi;
 
+    // TODO(us): Resolve the fact this shouldn't set rsp when initially starting.
     if( umi_->sv_.ef.rbp )
       ef->rbp = umi_->sv_.ef.rbp;
     if( umi_->sv_.ef.rsp )
       ef->rsp = umi_->sv_.ef.rsp;
-    
+
     set_status(running);
   }
 }
@@ -157,13 +160,37 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
+  lin_addr virt;
+  virt.raw = virtual_page_addr;
 
   /* Pass to the mounted sv to select/allocate the backing page */
   auto physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
-  auto backing_page = Pfn::Down(physical_start_addr); // TODO: make this an assert
+  lin_addr phys;
+  phys.raw = physical_start_addr;
 
   /* Map backing page into core's page tables */
-  ebbrt::vmem::MapMemory(virtual_page, backing_page, kPageSize);
+  // Get PML4[0x180].
+  // If 0, create new table on first mapping
+  //   Update PML4[0x180]
+  // Else, call map using.
+
+  simple_pte* PML4Root = UmPgTblMgr::getPML4Root();
+  simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
+
+  if (slotRoot->raw == 0) {
+    // No existing slotRoot entry.
+    auto pdpt = UmPgTblMgr::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
+                                         TBL_LEVEL, PDPT_LEVEL);
+
+    // "Install"
+    slotRoot->tableOrFramePtrToPte(pdpt);
+
+  } else {
+    // Slot root holds ptr to sub PT.
+    // UmPgTblMgr::nextTableOrFrame(PML4Root, 0x180, PML4_LEVEL),
+    UmPgTblMgr::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
+                             phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL);
+  }
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
