@@ -5,6 +5,7 @@
 
 #include <ebbrt/native/Clock.h>
 #include <ebbrt/native/PageAllocator.h>
+// #include <ebbrt/native/Pfn.h>
 #include <unordered_map>
 // #include "../../../EbbRT/src/native/Perf.h"
 #include "umm-common.h"
@@ -13,6 +14,8 @@
 // #include <Umm.h>
 #include <vector>
 // #include <inttypes.h>
+
+const unsigned char orders[] = {0, SMALL_ORDER, MEDIUM_ORDER, LARGE_ORDER};
 
 const unsigned char pgShifts[] = {0, SMALL_PG_SHIFT, MED_PG_SHIFT, LG_PG_SHIFT};
 
@@ -30,14 +33,49 @@ const char* level_names[] = {"NO_LEVEL",
 using umm::lin_addr;
 using umm::simple_pte;
 using umm::UmPgTblMgr;
-using umm::phys_addr;
 
 simple_pte *dbPte; // Delete this.
 int ccc = 0;
 
+// Printer helper.
 void alignToLvl(unsigned char lvl){
   for (int j = 0; j<4-lvl; j++) printf("\t");
 }
+
+void UmPgTblMgr::reclaimAllPages(simple_pte *root, unsigned char lvl,
+                                        bool reclaimPhysical /*=true*/) {
+  // HACK(tommyu): Fails to remove top level table.
+
+  // Loop over all entries in table.
+  for (int i = 0; i < 512; i++) {
+    simple_pte *curPte = root + i;
+    ebbrt::Pfn myPFN = ebbrt::Pfn::Down(curPte->pageTabEntToAddr(lvl).raw);
+    if (!exists(curPte)) continue;
+
+    if (isLeaf(curPte, lvl)) { // True if you're at TBL_LEVEL, or you map a larger page.
+      if (reclaimPhysical) {
+        // Reclaim the leaf.
+        printf(RED "Free physical page at addr, %p\n" RESET, myPFN.ToAddr());
+
+        // NOTE NYI
+        kassert(orders[lvl] == 0);
+        // Pfn expects a page number, not an address.
+        ebbrt::page_allocator->Free(myPFN, orders[lvl]);
+        // Remove entry.
+        curPte->raw = 0;
+      }
+    } else {
+      // We're > TBL_LEVEL & pointing to another table.
+      // Go in and free below.
+      reclaimAllPages(nextTableOrFrame(root, i, lvl), lvl - 1);
+
+      printf(RED "Currently on %s, Free page %p at addr %p at %s\n" RESET, level_names[lvl], myPFN, myPFN.ToAddr(), level_names[lvl-1]);
+      ebbrt::page_allocator->Free(myPFN, orders[TBL_LEVEL]);
+      curPte->raw = 0;
+    }
+  }
+}
+
 void UmPgTblMgr::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
@@ -219,7 +257,7 @@ void UmPgTblMgr::countValidPages(std::vector<uint64_t> &counts, simple_pte *root
 //   traverseValidPagesHelper(root, lvl);
 // }
 
-phys_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
+lin_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
   printf("la is %#0lx, offset is %lu, root is %p, lvl is %u\n", la.raw, la[lvl], root, lvl);
 
   if(!exists(root + la[lvl])){
@@ -228,16 +266,16 @@ phys_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsign
   }
 
   if (isLeaf(root + la[lvl], lvl)) {
-    phys_addr phys_addr;
+    lin_addr pa;
     printf("This guy is a leaf! Follow final table inderection & Return the addr \n");
     root = nextTableOrFrame(root, la[lvl], lvl);
-    phys_addr.raw = (uint64_t)root;
+    pa.raw = (uint64_t)root;
     switch (lvl) {
-    case PDPT_LEVEL: phys_addr.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
-    case DIR_LEVEL: phys_addr.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
-    case TBL_LEVEL: phys_addr.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
+    case PDPT_LEVEL: pa.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
+    case DIR_LEVEL: pa.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
+    case TBL_LEVEL: pa.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
     printf("bout to return helper\n");
-    return phys_addr;
+    return pa;
   }
 
   // Recurse.
@@ -246,7 +284,7 @@ phys_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsign
 
 }
 
-phys_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, unsigned char lvl /*=4*/) {
+lin_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, unsigned char lvl /*=4*/) {
   // Error checks and hands off to helper.
 
   // Valid range for 4 level paging.
@@ -334,6 +372,15 @@ void simple_pte::printCommon() {
   underlineNibbles();
   printNibblesHex();
 }
+
+// TODO(tommyu): No attmpt at performance.
+uint64_t simple_pte::pageTabEntToPFN(unsigned char lvl) {
+  // Get page frame number corresponding to addr.
+  // Because I haven't thought about this.
+  return pageTabEntToAddr(lvl).raw >> 12;
+}
+
+
 lin_addr simple_pte::pageTabEntToAddr(unsigned char lvl) {
   lin_addr la;
   // Refer to figure 4-11 in Vol 3A of the intel man.
@@ -549,6 +596,13 @@ void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
 }
 
 simple_pte *UmPgTblMgr::mapIntoPgTbl(simple_pte *root, lin_addr phys,
+                                           lin_addr virt, unsigned char rootLvl,
+                                           unsigned char mapLvl,
+                                           unsigned char curLvl) {
+  return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl);
+}
+
+simple_pte *UmPgTblMgr::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                      lin_addr virt, unsigned char rootLvl,
                                      unsigned char mapLvl,
                                      unsigned char curLvl) {
@@ -705,7 +759,7 @@ void testResolveGoodAddr(){
   myVarLA.raw = (uint64_t) &my_var;
 
   pgTabTool ptt;
-  phys_addr pa = ptt.getPhysAddrRec(myVarLA);
+  lin_addr pa = ptt.getPhysAddrRec(myVarLA);
   printf("Phys addr is %#0lx\n", pa.raw);
   printf("Value is %d \n", *((uint64_t*)pa.raw));
 }
