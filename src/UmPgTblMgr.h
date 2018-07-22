@@ -3,6 +3,8 @@
 
 #include "stdint.h"
 
+#define printf ebbrt::kprintf_force
+
 #define SMALL_PG_SHIFT 12
 #define MED_PG_SHIFT 21
 #define LG_PG_SHIFT 30
@@ -158,7 +160,15 @@ public:
   static void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
-  // static void traverseValidPages(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  static void traverseValidPages(simple_pte *root, uint8_t lvl);
+
+  // TODO(tommyu): I don't know what I'm doing.
+  template<typename Func>
+  static void LambdaTest (Func f){
+    printf("%s\n", __func__);
+    f();
+  }
+
 
   // Copiers
   static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
@@ -184,6 +194,49 @@ public:
   static void dumpTableAddrs(simple_pte *root, unsigned char lvl);
   static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
 
+  // static void countValidPagesLamb(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl);
+
+
+  // static void printMe(simple_pte *root, uint8_t lvl) {
+  //   traverseValidPages(root, lvl,
+  //                      []() { printf("REC \n");       },
+  //                      []() { printf("LEAF\n");       },
+  //                      []() { printf("RETURNING \n"); }
+  //                      );
+  // }
+  // void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
+  //                                      simple_pte *root, uint8_t lvl);
+  static void countValidPagesLamb(std::vector<uint64_t> &counts,
+                                  simple_pte *root, uint8_t lvl);
+
+  template <typename RecFunc, typename LeafFunc, typename PreRetFunc>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
+                                 LeafFunc L, PreRetFunc P) {
+    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
+      if (!exists(root + i))        // Skip if absent (set to 0).
+        continue;
+      if (isLeaf(root + i, lvl)) {  // -> a physical page of some sz.
+        L(root, i, lvl);
+      } else {                      // This entry points to a sub page table.
+        R();
+        traverseValidPages(nextTableOrFrame(root, i, lvl), lvl - 1, R, L, P);
+      }
+    }
+    P();
+  }
+
+  template <typename RecFunc, typename LeafFunc>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
+                                 LeafFunc L) {
+    traverseValidPages(root, lvl, R, L, [](){});
+  }
+
+  template <typename LeafFunc>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl, LeafFunc L) {
+    // NOTE: Sending
+    traverseValidPages(root, lvl, [](){}, L, [](){});
+  }
+
 private:
   UmPgTblMgr(); // Don't instantiate.
 
@@ -199,7 +252,9 @@ private:
   static void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
   static void countValidPTEsHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
-  // static void traverseValidPagesHelper(simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  // static void traverseValidPagesHelper(simple_pte *root, uint8_t);
+  // Printers Debuggers
+  static void dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl);
 
   static lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
   static lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);

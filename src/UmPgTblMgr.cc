@@ -37,6 +37,7 @@ using umm::UmPgTblMgr;
 simple_pte *dbPte; // Delete this.
 int ccc = 0;
 
+
 // Printer helper.
 void alignToLvl(unsigned char lvl){
   for (int j = 0; j<4-lvl; j++) printf("\t");
@@ -52,9 +53,9 @@ void UmPgTblMgr::reclaimAllPages(simple_pte *root, unsigned char lvl,
     ebbrt::Pfn myPFN = ebbrt::Pfn::Down(curPte->pageTabEntToAddr(lvl).raw);
     if (!exists(curPte)) continue;
 
-    if (isLeaf(curPte, lvl)) { // True if you're at TBL_LEVEL, or you map a larger page.
+    if (isLeaf(curPte, lvl)) {
       if (reclaimPhysical) {
-        // Reclaim the leaf.
+        // Reclaim the leaf phys page.
         printf(RED "Free physical page at addr, %p\n" RESET, myPFN.ToAddr());
 
         // NOTE NYI
@@ -66,17 +67,25 @@ void UmPgTblMgr::reclaimAllPages(simple_pte *root, unsigned char lvl,
       }
     } else {
       // We're > TBL_LEVEL & pointing to another table.
-      // Go in and free below.
+
+      // Reclaim below
       reclaimAllPages(nextTableOrFrame(root, i, lvl), lvl - 1);
 
-      printf(RED "Currently on %s, Free page %p at addr %p at %s\n" RESET, level_names[lvl], myPFN, myPFN.ToAddr(), level_names[lvl-1]);
-      ebbrt::page_allocator->Free(myPFN, orders[TBL_LEVEL]);
+      // Finished our work on that child, remove mapping.
       curPte->raw = 0;
     }
   }
+  ebbrt::Pfn myPFN = ebbrt::Pfn::Down(root);
+  printf(RED "Currently on %s, Free page %p at addr %p\n" RESET,
+         level_names[lvl], myPFN, myPFN.ToAddr());
+  ebbrt::page_allocator->Free(myPFN, orders[TBL_LEVEL]);
+}
+void UmPgTblMgr::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
+  printf(GREEN "Root at %s: %p\n" RESET, level_names[lvl], root);
+  dumpFullTableAddrsHelper(root, lvl);
 }
 
-void UmPgTblMgr::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
+void UmPgTblMgr::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
   alignToLvl(lvl);
@@ -93,12 +102,10 @@ void UmPgTblMgr::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
       alignToLvl(lvl);
       printf(CYAN "%d -> %p\n" RESET, i, (root+i)->pageTabEntToAddr(lvl));
     }
-    // (root+i)->printCommon();
-    // while(1);
 
     if(! isLeaf(root + i, lvl)){
       // Recurse.
-      dumpFullTableAddrs(nextTableOrFrame(root, i, lvl), lvl - 1);
+      dumpFullTableAddrsHelper(nextTableOrFrame(root, i, lvl), lvl - 1);
     }
   }
   //Close brace.
@@ -181,6 +188,14 @@ void UmPgTblMgr::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *r
   countAccessedPagesHelper(counts, root, lvl);
 }
 
+void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
+                                simple_pte *root, uint8_t lvl) {
+  // traverseValidPages(root, lvl, [counts](){counts[0]++;});
+  traverseValidPages(root, lvl, [&counts](simple_pte * root,  int i, uint8_t lvl){
+      counts[lvl]++;
+    });
+}
+
 void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,
                                        simple_pte *root, uint8_t lvl) {
   // Counts valid leaf pages at various levels.
@@ -234,28 +249,6 @@ void UmPgTblMgr::countValidPages(std::vector<uint64_t> &counts, simple_pte *root
   countValidPagesHelper(counts, root, lvl);
 }
 
-// void UmPgTblMgr::traverseValidPagesHelper(simple_pte *root, uint8_t lvl) {
-//   for (int i = 0; i < 512; i++) {
-//     if (!exists(root + i))
-//       continue;
-//     if (isLeaf(root + i, lvl)) {
-//     } else {
-//       traverseValidPagesHelper(nextTableOrFrame(root, i, lvl), lvl - 1);
-//     }
-//   }
-// }
-
-// void UmPgTblMgr::traverseValidPages(simple_pte *root, uint8_t lvl){
-//   // Going to grab PML4, so better be lvl 4.
-//   if(root == nullptr){
-//     kassert(lvl == 4);
-//   }
-
-//   if (root == nullptr){
-//     root = getPML4Root();
-//   }
-//   traverseValidPagesHelper(root, lvl);
-// }
 
 lin_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
   printf("la is %#0lx, offset is %lu, root is %p, lvl is %u\n", la.raw, la[lvl], root, lvl);

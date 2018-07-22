@@ -11,7 +11,6 @@
 #include <UmPgTblMgr.h>
 #include <Umm.h>
 
-#define printf ebbrt::kprintf_force
 
 using umm::lin_addr;
 using umm::simple_pte;
@@ -302,9 +301,35 @@ void testReclaimAllPages(simple_pte *root){
 }
 
 void AppMain() {
+  // Allocate a page.
+
   simple_pte *root = testMapping4K();
-  testReclaimAllPages(root);
+  // testReclaimAllPages(root);
   UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
 
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+  UmPgTblMgr::countValidPages(counts, root, PDPT_LEVEL);
+  printf("Non Lambda\n");
+  printCounts(counts);
 
+  std::vector<uint64_t> counts2(5); // Vec of size 5, zero elements.
+  UmPgTblMgr::countValidPagesLamb(counts2, root, PDPT_LEVEL);
+  printf("Lambda\n");
+  printCounts(counts2);
+
+
+
+  // UmPgTblMgr::traverseValidPages(root, PDPT_LEVEL,
+  //                                []() -> void { printf("Rec\n\n");},
+  //                                []() -> void { printf("Leaf\n");}
+  //                                );
+
+  // UmPgTblMgr::traverseValidPages(root, PDPT_LEVEL,
+  //                                []() -> void { printf("Rec\n\n");},
+  //                                []() -> void { printf("Leaf\n");},
+  //                                [&]() -> void { printf("PostLoop, %s\n",
+  //                                                      level_names[lvl]);}
+  //                                );
+
+  printf(RED "Done %s\n", __func__);
 }
