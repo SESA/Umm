@@ -90,6 +90,7 @@ class simple_pte {
   lin_addr cr3ToAddr();
   void printCommon();
   void tableOrFramePtrToPte(simple_pte *tab);
+  void clearPTE();
 private:
   void printBits(uint64_t val, int len);
   void underlineNibbles();
@@ -162,16 +163,9 @@ public:
 
   static void traverseValidPages(simple_pte *root, uint8_t lvl);
 
-  // TODO(tommyu): I don't know what I'm doing.
-  template<typename Func>
-  static void LambdaTest (Func f){
-    printf("%s\n", __func__);
-    f();
-  }
-
-
   // Copiers
   static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
+  static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl);
 
   // Extractors
   simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
@@ -195,62 +189,80 @@ public:
   static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
 
   // NOTE: World of lambdas begins here.
-
-  // static void printTraversal(simple_pte *root, uint8_t lvl) {
-  //   traverseValidPages(root, lvl,
-  //                      []() { printf("REC \n");       },
-  //                      []() { printf("LEAF\n");       },
-  //                      []() { printf("RETURNING \n"); }
-  //                      );
-  // }
+  static void printTraversalLamb(simple_pte *root, uint8_t lvl);
 
   static void countValidPagesLamb(std::vector<uint64_t> &counts,
                                   simple_pte *root, uint8_t lvl);
 
-  template <typename RecFunc, typename LeafFunc>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
-                                 LeafFunc L) {
-    // Takes a function to run before the recursion and on leaf.
-    auto nullFn = [](simple_pte *root, uint8_t lvl){};
-    traverseValidPages(root, lvl, R, L, nullFn);
+  static void countAccessedPagesLamb(std::vector<uint64_t> &counts,
+                                  simple_pte *root, uint8_t lvl);
+
+  static void countDirtyPagesLamb(std::vector<uint64_t> &counts,
+                                  simple_pte *root, uint8_t lvl);
+
+  template <typename LeafFn>
+  static void traverseAccessedPages(simple_pte *root, uint8_t lvl, LeafFn L) {
+    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+      // exists() is redundant assuming non existant ptes are 0.
+      return exists(curPte) && isAccessed(curPte);
+    };
+
+    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
+    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
+
+    traversePageTable(root, lvl, pred, nullFn, nullAftRecFn, L, nullFn);
   }
 
-  template <typename LeafFunc>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl, LeafFunc L) {
+  template <typename LeafFn>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl, LeafFn L) {
     // Only takes a leaf function, rest are null.
     auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
-    traverseValidPages(root, lvl, nullFn, L);
+    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
+    traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
   }
 
-template <typename RecFunc, typename LeafFunc, typename PreRetFunc>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
-                                 LeafFunc L, PreRetFunc PR) {
-  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {return !exists(curPte);};
-  traversePageTable(root, lvl, pred, R, L, PR);
-}
+  template <typename BefRecFn, typename AftRecFn, typename LeafFn, typename BefRetFn>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl,
+                                 BefRecFn BR, AftRecFn AR, LeafFn L, BefRetFn BRET) {
+    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+      return exists(curPte);
+    };
+    traversePageTable(root, lvl, pred, BR, AR, L, BRET);
+  }
 
   // Continue predicate, pre recursion, leaf, before return.
-  template <typename PredicateFunc, typename RecFunc, typename LeafFunc,
-            typename PreRetFunc>
-  static void traversePageTable(simple_pte *root, uint8_t lvl, PredicateFunc P,
-                                RecFunc R, LeafFunc L, PreRetFunc PR) {
-    // A general page table traverser. Intention is to make
-    // specializations, like a fn that only walks valid pages, accessed pages,
-    // dirty pages ...
+  // TODO(tommyu): Spell out full name.
+  // TODO(tommyu): template too general, name types of lambdas.
+  template <typename PredFn, typename BefRecFn, typename AftRecFn,
+            typename LeafFn, typename BefRetFn>
+static simple_pte *traversePageTable(simple_pte *root, uint8_t lvl,
+                                     PredFn P, BefRecFn BR, AftRecFn AR,
+                                     LeafFn L, BefRetFn BRET) {
+    // A general page table traverser. Intention is not to call this directly
+    // from client code, but to make specializations, like a fn that only walks
+    // valid pages, accessed pages, dirty pages ...
     for (int i = 0; i < 512; i++) { // Loop over all entries in table.
       simple_pte *curPte = root + i;
-      if (P(curPte, lvl))        // Skip if predicate is true.
+
+      if (!P(curPte, lvl)) // ! allows pred to stay in positive sense for caller.
         continue;
-      if (isLeaf(curPte, lvl)) {  // -> a physical page of some sz.
+
+      if (isLeaf(curPte, lvl)) { // -> a physical page of some sz.
         L(curPte, lvl);
-      } else {                      // This entry points to a sub page table.
-        R(curPte, lvl);
-        traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, R, L, PR);
+
+      } else { // This entry points to a sub page table.
+        BR(curPte, lvl);
+        simple_pte *childRoot = traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, BR, AR, L, BRET);
+        // NOTE: This guy takes an extra arg.
+        AR(childRoot, curPte, lvl);
       }
-    }
-    // NOTE: This guy takes root, not curPte!
-    PR(root, lvl);
   }
+  // NOTE: This guy takes root, not curPte!
+  BRET(root, lvl);
+  return root;
+}
+
+  static bool exists (simple_pte *pte);
 
 private:
   UmPgTblMgr(); // Don't instantiate.
@@ -285,7 +297,6 @@ private:
 
   static lin_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
   static bool isLeaf     (simple_pte *pte, unsigned char lvl);
-  static bool exists     (simple_pte *pte);
   static bool isAccessed (simple_pte *pte);
   static bool isDirty    (simple_pte *pte);
   static bool isReadOnly (simple_pte *pte);

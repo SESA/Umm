@@ -6,13 +6,13 @@
 #include "UmManager.h"
 
 #include <ebbrt/native/VMemAllocator.h>
-#include "UmPgTblMgr.h"
 #include <atomic>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   kprintf(MAGENTA "Umm... Taking a snapshot\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
+
   umm::manager->process_checkpoint(ef);
 }
 
@@ -35,6 +35,7 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     // restore context of the client who called Start()
     *ef = caller_restore_frame_;
     set_status(finished);
+    // TODO(tommyu): else if status() = loaded
   } else {
     // If this context is not already running we treat this entry an jump into
     // the instance. Backup the restore_frame (context) of the client and modify
@@ -44,7 +45,7 @@ void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
     ef->rdi = umi_->sv_.ef.rdi;
     ef->rsi = umi_->sv_.ef.rsi;
 
-    // TODO(us): Resolve the fact this shouldn't set rsp when initially starting.
+    // TODO(us): Confirm what's going on here.
     if( umi_->sv_.ef.rbp )
       ef->rbp = umi_->sv_.ef.rbp;
     if( umi_->sv_.ef.rsp )
@@ -96,50 +97,16 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   set_status(snapshot);
 
   auto snap_sv = new UmSV();
-  snap_sv->ef = *ef; 
+  snap_sv->ef = *ef;
 
-  // XXX: Here be Dragons...
-  
-  // Iterate the region list of the loaded umi
+  // Populate region list.
   for (const auto &reg : umi_->sv_.region_list_) {
-    kprintf(CYAN "Umm... checkpointing %s region\n" RESET, reg.name.c_str());
     UmSV::Region r = reg;
-
-    if (r.writable) {
-      size_t plen;
-      // XXX: Special case usr region b/c its too big to malloc
-      if (reg.name == "usr") {
-        // Allocate a new (empty) region for the writable sections
-        plen = kPageSize;
-      }else{
-        plen = r.length + kPageSize - (r.length % kPageSize); // round up to full page
-      }
-      r.data = (unsigned char *)malloc(plen);
-      kprintf(CYAN "Umm... new data region for %s len=%d[%d] (%p)\n" RESET,
-              r.name.c_str(), plen, r.length, r.data);
-    }
     snap_sv->AddRegion(r);
   }
 
-  // XXX: More Dragons...
-
-  //   Interate the list of faulted_pages and map in each page
-  for( auto vaddr : umi_->sv_.faulted_pages_ ){
-    auto r = snap_sv->GetRegionOfAddr(vaddr);
-    kassert(r.writable);
-    size_t offset = r.GetOffset(vaddr);
-    // XXX: Special case usr region b/c its too big to malloc
-    if (r.name == "usr") {
-      // user region
-      offset = 0;
-    } else {
-      offset = r.GetOffset(vaddr);
-    }
-    kprintf( CYAN "Umm... capture page %p in %s(%d) |  r.data + offset (%p + %d)\n" RESET,
-        vaddr, r.name.c_str(), r.length, r.data, offset);
-    // We copy from vaddr directly because it should still be mapped
-    std::memcpy((void *)(r.data + offset), (const void *)vaddr, kPageSize);
-  }
+  // Copy all dirty pages into new page table.
+  snap_sv->pth.copyInPages(getSlotPDPTRoot());
 
   // Save the snapshot and resume execution of the instance
   umi_snapshot_.SetValue(*snap_sv);
@@ -155,8 +122,6 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
     kprintf(RED "Umm... Snapshot Pagefault\n" RESET);
-
-  // TODO: Replace with our own mapping mechanism and semantics
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -187,21 +152,58 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   } else {
     // Slot root holds ptr to sub PT.
-    // UmPgTblMgr::nextTableOrFrame(PML4Root, 0x180, PML4_LEVEL),
     UmPgTblMgr::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
                              phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL);
   }
 }
 
+umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
+  // Root of slot.
+  simple_pte *root = UmPgTblMgr::getPML4Root();
+  if(!UmPgTblMgr::exists(root + kSlotPML4Offset)){
+    return nullptr;
+  }
+  // TODO(tommyu): don't really need to deref.
+  // HACK(tommyu): Fix this busted ass shit..
+  return (simple_pte *)
+    (root + kSlotPML4Offset)->pageTabEntToAddr(PML4_LEVEL) .raw;
+}
+
+void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
+  kassert(newRoot != nullptr);
+  (UmPgTblMgr::getPML4Root()+ kSlotPML4Offset)->tableOrFramePtrToPte(newRoot);
+}
+
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
+  // Better not have a loaded root.
+  simple_pte *pdptRoot = getSlotPDPTRoot();
+  kassert(pdptRoot == nullptr);
+
+  // If we have a vaild pth root, install it.
+  auto pthRoot = umi->sv_.pth.Root();
+  if(pthRoot != nullptr){
+    printf("Installing instance pte root.\n");
+    setSlotPDPTRoot(pthRoot);
+    pdptRoot = getSlotPDPTRoot();
+    kassert(pdptRoot != nullptr);
+  }
+
+  // Otherwise leave it 0 to be populated during 1st page fault.
+
   set_status(loaded);
   umi_ = std::move(umi);
 }
 
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
+  simple_pte *pdptRoot = getSlotPDPTRoot();
+  kassert(pdptRoot != nullptr);
+
+  // Clear slot PTE.
+  pdptRoot->clearPTE();
+
   set_status(empty);
+
   auto tmp_um = std::move(umi_);
-  // XXX(jmcadden): Unmap slot memory
   return std::move(tmp_um);
 }
 

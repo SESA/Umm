@@ -11,6 +11,7 @@
 #include <ebbrt/native/VMemAllocator.h>
 
 #include "UmInstance.h"
+#include "UmPgTblMgr.h"
 #include "UmSV.h"
 #include "umm-common.h"
 #include "util/x86_64.h"
@@ -90,6 +91,9 @@ private:
   std::unique_ptr<UmInstance> umi_;
   // TODO: Reusables or multi-promises 
   ebbrt::Promise<UmSV> umi_snapshot_;
+private:
+  void setSlotPDPTRoot(simple_pte* newRoot);
+  simple_pte* getSlotPDPTRoot();
 };
 
 constexpr auto manager = 

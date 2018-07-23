@@ -188,11 +188,63 @@ void UmPgTblMgr::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *r
   countAccessedPagesHelper(counts, root, lvl);
 }
 
+// NOTE: World of lambdas begins here.
 void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
                                 simple_pte *root, uint8_t lvl) {
   // Counts number mapped pages.
-  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){counts[lvl]++;};
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    counts[lvl]++;
+  };
   traverseValidPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgr::countAccessedPagesLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl) {
+  // Counts number mapped pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    counts[lvl]++;
+  };
+  traverseAccessedPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgr::countDirtyPagesLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl) {
+  // Counts number dirty pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    if(isLeaf(curPte, lvl))
+      if(isDirty(curPte))
+      counts[lvl]++;
+  };
+  // NOTE: Trying walking accessed, not valid.
+  traverseAccessedPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgr::printTraversalLamb(simple_pte *root, uint8_t lvl) {
+  // Dummy example for how one might use the general traverser.
+  auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    return exists(curPte);
+  };
+  auto beforeRecursiveCall = [](simple_pte *curPte, uint8_t lvl) {
+    printf("Before Recursion\n");
+  };
+  auto afterRecursiveCall = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl) {
+    printf("After Recursion\n");
+  };
+  auto leaf = [](simple_pte *curPte, uint8_t lvl) {
+    printf("At leaf\n");
+  };
+  auto beforeReturn = [](simple_pte *root, uint8_t lvl) {
+    printf("About to return\n");
+  };
+
+  // TODO(tommyu): fn suffix.
+  traversePageTable(root, lvl,
+                    predicate,
+                    beforeRecursiveCall,
+                    afterRecursiveCall,
+                    leaf,
+                    beforeReturn
+                    );
 }
 
 void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,
@@ -298,6 +350,7 @@ lin_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, 
   return getPhysAddrRecHelper(la, root, lvl);
 }
 
+// TODO(tommyu): Delete me.
 simple_pte* UmPgTblMgr::getSlotPDPTRoot(){
   // Root of slot.
   simple_pte *root = getPML4Root();
@@ -505,6 +558,16 @@ bool UmPgTblMgr::isLeaf(simple_pte *pte, unsigned char lvl){
   return false;
 }
 
+simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl) {
+  // Entry 0 is bogus and unused
+
+  // HACK(tommyu): trying to get off the ground.
+  uint64_t idx[5] = {0};
+  // HACK(tommyu): This is actually critical.
+  idx[4] = SLOT_PML4_NUM;
+  return walkPgTblCopyDirtyHelper(root, copy, lvl, idx);
+
+}
 simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) {
   // Entry 0 is bogus and unused
 
@@ -564,6 +627,11 @@ uint16_t lin_addr::operator[](uint8_t idx){
 
 bool dbBool = true;
 
+void simple_pte::clearPTE(){
+  raw = 0;
+}
+
+// TODO Fix this name
 // TODO Fix this name
 void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
   // TODO(tommyu): generalize to all levels.

@@ -65,6 +65,24 @@ void testCountValidPages(){
   UmPgTblMgr::countValidPages(counts);
   printCounts(counts);
 }
+void testCountValidPagesLamb(){
+  // Traverse page table and count leaf PTEs.
+  printf(YELLOW "%s\n" RESET, __func__);
+  printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgr::countValidPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  printf("Valid pages before running target:\n");
+  printCounts(counts);
+
+  runHelloWorld();
+
+  std::fill(counts.begin(), counts.end(), 0);
+
+  printf("\nValid pages after running target:\n");
+  UmPgTblMgr::countValidPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  printCounts(counts);
+}
 
 void testCountAccessedPages(){
   printf(YELLOW "%s\n" RESET, __func__);
@@ -84,6 +102,24 @@ void testCountAccessedPages(){
   printCounts(counts);
 }
 
+void testCountAccessedPagesLamb(){
+  printf(YELLOW "%s\n" RESET, __func__);
+  printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgr::countAccessedPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  printf("Accessed pages before running target:\n");
+  printCounts(counts);
+
+  runHelloWorld();
+
+  std::fill(counts.begin(), counts.end(), 0);
+
+  printf("\nAccessed pages after running target:\n");
+  UmPgTblMgr::countAccessedPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  printCounts(counts);
+}
+
 void testCountDirtyPages(){
   printf(YELLOW "%s\n" RESET, __func__);
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
@@ -99,6 +135,24 @@ void testCountDirtyPages(){
 
   printf("\nDirty pages after running target:\n");
   UmPgTblMgr::countDirtyPages(counts);
+  printCounts(counts);
+}
+
+void testCountDirtyPagesLamb(){
+  printf(YELLOW "%s\n" RESET, __func__);
+  printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgr::countDirtyPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  printf("Dirty pages before running target:\n");
+  printCounts(counts);
+
+  runHelloWorld();
+
+  std::fill(counts.begin(), counts.end(), 0);
+
+  printf("\nDirty pages after running target:\n");
+  UmPgTblMgr::countDirtyPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
   printCounts(counts);
 }
 
@@ -301,21 +355,41 @@ void testReclaimAllPages(simple_pte *root){
 }
 
 void AppMain() {
-  // Allocate a page.
+  // Note looks like Valid pages count works.
+  // testCountValidPages();
+  testCountValidPagesLamb();
 
-  simple_pte *root = testMapping4K();
-  // testReclaimAllPages(root);
-  UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  // Note looks like Accessed pages count works.
+  // testCountAccessedPages();
+  // testCountAccessedPagesLamb();
 
-  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
-  UmPgTblMgr::countValidPages(counts, root, PDPT_LEVEL);
-  printf("Non Lambda\n");
-  printCounts(counts);
 
-  std::vector<uint64_t> counts2(5); // Vec of size 5, zero elements.
-  UmPgTblMgr::countValidPagesLamb(counts2, root, PDPT_LEVEL);
-  printf("Lambda\n");
-  printCounts(counts2);
+  // Note looks like Dirty pages count works.
+  // testCountDirtyPages();
+  // testCountDirtyPages();
+
+  // testMapping4K();
+
+
+  // // Allocate a page.
+
+  // simple_pte *root = testMapping4K();
+  // // testReclaimAllPages(root);
+  // // UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+
+  // UmPgTblMgr::printTraversalLamb(root, PDPT_LEVEL);
+
+  while(1);
+
+  // std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+  // UmPgTblMgr::countValidPages(counts, root, PDPT_LEVEL);
+  // printf("Non Lambda\n");
+  // printCounts(counts);
+
+  // std::vector<uint64_t> counts2(5); // Vec of size 5, zero elements.
+  // UmPgTblMgr::countValidPagesLamb(counts2, root, PDPT_LEVEL);
+  // printf("Lambda\n");
+  // printCounts(counts2);
 
   printf(RED "Done %s\n", __func__);
 }

@@ -6,6 +6,7 @@
 #define UMM_UM_SV_H_
 
 #include "umm-common.h"
+#include "UmPth.h"
 
 namespace umm {
 
@@ -51,8 +52,8 @@ public:
 
   }; // UmSV::Region
 
-  UmSV(){};
-  explicit UmSV(uintptr_t entry) { SetEntry(entry); };
+  UmSV(){ ef = {0}; };
+  explicit UmSV(uintptr_t entry) { ef={0}; SetEntry(entry); };
   void SetEntry(uintptr_t paddr) { ef.rip = paddr; }
   void AddRegion(Region &reg) { region_list_.push_back(reg); }
   void Print() {
@@ -69,9 +70,8 @@ public:
     kabort("Umm... No region found for addr %p n", vaddr);
   }
   std::list<Region> region_list_; // TODO: generic type 
-  std::vector<uintptr_t> faulted_pages_; //XXX: <-- KLUDGE!!
   ExceptionFrame ef;
-
+  UmPth pth;
 }; // UmSV
 } // umm
 #endif // UMM_UM_SV_H_

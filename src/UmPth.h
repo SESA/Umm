@@ -6,22 +6,24 @@
 #define UMM_UM_PTH_H_
 
 #include "umm-common.h"
+#include "UmPgTblMgr.h"
 
 namespace umm {
 
 /** 
- *	UmPth - Page table handler type of an Um Instance 
- * 	( Or an UmSV, not sure yet...)
+ *	UmPth - Page table handler type of an UmSV
  */
 class UmPth {
 public:
-  UmPth() delete;
-  UmPth(uintptr_t root, size_t lvl) : root_(root), lvl_(lvl) {}
+  UmPth(): root_(nullptr),lvl_(PDPT_LEVEL){};
+  UmPth(simple_pte *root, uint8_t lvl) : root_(root), lvl_(lvl) {}
 	// public methods
-  uintptr_t Root() { return root_; }
+  simple_pte *Root() { return root_; }
+  void copyInPages(const simple_pte *srcRoot);
+  void printMappedPagesCount() const;
 private:
-  const uintptr_t root_;
-  const size_t lvl_;
+  simple_pte *root_;
+  uint8_t lvl_;
 }; // UmPth
 } // umm
 
