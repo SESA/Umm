@@ -194,47 +194,62 @@ public:
   static void dumpTableAddrs(simple_pte *root, unsigned char lvl);
   static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
 
-  // static void countValidPagesLamb(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl);
+  // NOTE: World of lambdas begins here.
 
-
-  // static void printMe(simple_pte *root, uint8_t lvl) {
+  // static void printTraversal(simple_pte *root, uint8_t lvl) {
   //   traverseValidPages(root, lvl,
   //                      []() { printf("REC \n");       },
   //                      []() { printf("LEAF\n");       },
   //                      []() { printf("RETURNING \n"); }
   //                      );
   // }
-  // void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
-  //                                      simple_pte *root, uint8_t lvl);
+
   static void countValidPagesLamb(std::vector<uint64_t> &counts,
                                   simple_pte *root, uint8_t lvl);
-
-  template <typename RecFunc, typename LeafFunc, typename PreRetFunc>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
-                                 LeafFunc L, PreRetFunc P) {
-    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
-      if (!exists(root + i))        // Skip if absent (set to 0).
-        continue;
-      if (isLeaf(root + i, lvl)) {  // -> a physical page of some sz.
-        L(root, i, lvl);
-      } else {                      // This entry points to a sub page table.
-        R();
-        traverseValidPages(nextTableOrFrame(root, i, lvl), lvl - 1, R, L, P);
-      }
-    }
-    P();
-  }
 
   template <typename RecFunc, typename LeafFunc>
   static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
                                  LeafFunc L) {
-    traverseValidPages(root, lvl, R, L, [](){});
+    // Takes a function to run before the recursion and on leaf.
+    auto nullFn = [](simple_pte *root, uint8_t lvl){};
+    traverseValidPages(root, lvl, R, L, nullFn);
   }
 
   template <typename LeafFunc>
   static void traverseValidPages(simple_pte *root, uint8_t lvl, LeafFunc L) {
-    // NOTE: Sending
-    traverseValidPages(root, lvl, [](){}, L, [](){});
+    // Only takes a leaf function, rest are null.
+    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
+    traverseValidPages(root, lvl, nullFn, L);
+  }
+
+template <typename RecFunc, typename LeafFunc, typename PreRetFunc>
+  static void traverseValidPages(simple_pte *root, uint8_t lvl, RecFunc R,
+                                 LeafFunc L, PreRetFunc PR) {
+  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {return !exists(curPte);};
+  traversePageTable(root, lvl, pred, R, L, PR);
+}
+
+  // Continue predicate, pre recursion, leaf, before return.
+  template <typename PredicateFunc, typename RecFunc, typename LeafFunc,
+            typename PreRetFunc>
+  static void traversePageTable(simple_pte *root, uint8_t lvl, PredicateFunc P,
+                                RecFunc R, LeafFunc L, PreRetFunc PR) {
+    // A general page table traverser. Intention is to make
+    // specializations, like a fn that only walks valid pages, accessed pages,
+    // dirty pages ...
+    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
+      simple_pte *curPte = root + i;
+      if (P(curPte, lvl))        // Skip if predicate is true.
+        continue;
+      if (isLeaf(curPte, lvl)) {  // -> a physical page of some sz.
+        L(curPte, lvl);
+      } else {                      // This entry points to a sub page table.
+        R(curPte, lvl);
+        traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, R, L, PR);
+      }
+    }
+    // NOTE: This guy takes root, not curPte!
+    PR(root, lvl);
   }
 
 private:

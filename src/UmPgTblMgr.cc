@@ -190,10 +190,9 @@ void UmPgTblMgr::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *r
 
 void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
                                 simple_pte *root, uint8_t lvl) {
-  // traverseValidPages(root, lvl, [counts](){counts[0]++;});
-  traverseValidPages(root, lvl, [&counts](simple_pte * root,  int i, uint8_t lvl){
-      counts[lvl]++;
-    });
+  // Counts number mapped pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){counts[lvl]++;};
+  traverseValidPages(root, lvl, leafFn);
 }
 
 void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,

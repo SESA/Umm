@@ -317,12 +317,8 @@ void AppMain() {
   printf("Lambda\n");
   printCounts(counts2);
 
-
-
-  // UmPgTblMgr::traverseValidPages(root, PDPT_LEVEL,
-  //                                []() -> void { printf("Rec\n\n");},
-  //                                []() -> void { printf("Leaf\n");}
-  //                                );
+  printf(RED "Done %s\n", __func__);
+}
 
   // UmPgTblMgr::traverseValidPages(root, PDPT_LEVEL,
   //                                []() -> void { printf("Rec\n\n");},
@@ -331,5 +327,3 @@ void AppMain() {
   //                                                      level_names[lvl]);}
   //                                );
 
-  printf(RED "Done %s\n", __func__);
-}
