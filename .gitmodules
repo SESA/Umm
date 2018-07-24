@@ -1,10 +1,13 @@
 [submodule "ext/solo5"]
 	path = ext/solo5
 	url = https://github.com/sesa/solo5.git
+	ignore = dirty
 [submodule "ext/rumprun"]
 	path = ext/rumprun
 	url = https://github.com/sesa/rumprun.git
+	ignore = dirty
 [submodule "ext/rumprun-packages"]
 	path = ext/rumprun-packages
 	url = https://github.com/ricarkol/rumprun-packages.git
 	branch = solo5
+	ignore = dirty
