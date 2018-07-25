@@ -34,8 +34,10 @@ using namespace umm;
 using umm::lin_addr;
 using umm::simple_pte;
 
-simple_pte *dbPte; // Delete this.
-int ccc = 0;
+UmPgTblMgmt::beforeRecFn nullBRFn   = [](simple_pte *curPte, uint8_t lvl){};
+UmPgTblMgmt::afterRecFn  nullARFn   = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl){};
+UmPgTblMgmt::leafFn      nullLFn    = nullBRFn;
+UmPgTblMgmt::beforeRetFn nullBRetFn = nullBRFn;
 
 
 // Printer helper.
@@ -219,6 +221,13 @@ void UmPgTblMgmt::countDirtyPagesLamb(std::vector<uint64_t> &counts,
   traverseAccessedPages(root, lvl, leafFn);
 }
 
+// void UmPgTblMgmt::countValidPTEsLamb(std::vector<uint64_t> &counts,
+//                                          simple_pte *root, uint8_t lvl) {
+  // Counts number mapped pages.
+  // #error
+//   traverseValidPages(root, lvl, leafFn);
+// }
+
 void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
   // Dummy example for how one might use the general traverser.
   auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {
@@ -248,24 +257,17 @@ void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
 }
 
 
-   void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
-    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
-      // exists() is redundant assuming non existant ptes are 0.
-      return exists(curPte) && isAccessed(curPte);
-    };
+void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
+  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    // exists() is redundant assuming non existant ptes are 0.
+    return exists(curPte) && isAccessed(curPte);
+  };
 
-    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
-    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
-
-    traversePageTable(root, lvl, pred, nullFn, nullAftRecFn, L, nullFn);
-  }
+  traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, nullBRetFn);
+}
 
    void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L) {
-    // Only takes a leaf function, rest are null.
-    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
-    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
-    // traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
-    traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
+    traverseValidPages(root, lvl, nullBRFn, nullARFn, L, nullBRetFn);
   }
 
    void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl,

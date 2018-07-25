@@ -202,11 +202,6 @@ namespace UmPgTblMgmt {
   // Work to run before returning to parent page table.
   typedef beforeRecFn beforeRetFn;
 
-  // beforeRecFn nullBRF = [](simple_pte *curPte, uint8_t lvl){};
-  // afterRecFn  nullARF   = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl){};
-  // leafFn      nullLF    = nullBRF;
-  // beforeRetFn nullBRetF = nullBRF;
-
    void printTraversalLamb(simple_pte *root, uint8_t lvl);
 
    void countValidPagesLamb(std::vector<uint64_t> &counts,

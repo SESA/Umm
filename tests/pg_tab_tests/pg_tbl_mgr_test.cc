@@ -356,7 +356,7 @@ void testReclaimAllPages(simple_pte *root){
 void AppMain() {
   // Note looks like Valid pages count works.
   // testCountValidPages();
-  // testCountValidPagesLamb();
+  testCountValidPagesLamb();
 
   // Note looks like Accessed pages count works.
   // testCountAccessedPages();
@@ -365,7 +365,11 @@ void AppMain() {
 
   // Note looks like Dirty pages count works.
   // testCountDirtyPages();
-  testCountDirtyPagesLamb();
+  // testCountDirtyPagesLamb();
+
+  // Note looks like count valid PTEs works.
+  // UmPgTblMgmt::testCountValidPTEs();
+  // testCountValidPTEsLamb();
 
   // testMapping4K();
 
