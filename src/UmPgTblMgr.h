@@ -2,6 +2,7 @@
 #define UMM_UM_PG_TBL_MGR
 
 #include "stdint.h"
+#include <functional>
 
 #define printf ebbrt::kprintf_force
 
@@ -47,7 +48,7 @@ enum PgSz {
 
 namespace umm {
 
-  // TODO(tommyu):where should this go?
+ // TODO(tommyu):where should this go?
 class lin_addr;
 // Simplified page table entry.
 class simple_pte {
@@ -144,165 +145,132 @@ private:
 };
 static_assert(sizeof(lin_addr) == sizeof(uint64_t), "Bad lin_addr SZ");
 
-class UmPgTblMgr {
-public:
+namespace UmPgTblMgmt {
+
   // NOTE: NYI. Higher level operations on page tables.
-  static void areEqual();
-  static void isSubset();
-  static void difference();
+  // static void areEqual();
+  // static void isSubset();
+  // static void difference();
 
   // Reclaimer
-  static void reclaimAllPages(simple_pte *root, unsigned char lvl, bool reclaimPhysical = true);
+  void reclaimAllPages(simple_pte *root, unsigned char lvl, bool reclaimPhysical = true);
 
   // Counters
   // TODO(tommyu): Do we want defaults? Maybe not.
-  static void countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  void countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  void countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  void countValidPages(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+  void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
-  static void traverseValidPages(simple_pte *root, uint8_t lvl);
+  void traverseValidPages(simple_pte *root, uint8_t lvl);
 
   // Copiers
-  static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
-  static simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl);
+  simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
+  simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl);
 
   // Extractors
   simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
                         unsigned char lvl = 4);
   // Chasers
-  static lin_addr getPhysAddrRec(lin_addr la, simple_pte *root = nullptr,
-                           unsigned char lvl = 4);
+  lin_addr getPhysAddrRec(lin_addr la, simple_pte *root = nullptr,
+                          unsigned char lvl = 4);
 
   // Mappers
-  static simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
-                                        lin_addr virt, unsigned char rootLvl,
-                                        unsigned char mapLvl, unsigned char curLvl);
+  simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
+                           lin_addr virt, unsigned char rootLvl,
+                           unsigned char mapLvl, unsigned char curLvl);
 
   // Root Getters
-  static simple_pte *getSlotPDPTRoot();
-  static simple_pte *getPML4Root();
+  simple_pte *getSlotPDPTRoot();
+  simple_pte *getPML4Root();
 
   // Printers / DBers.
   // TODO(tommyu): Fix these names.
-  static void dumpTableAddrs(simple_pte *root, unsigned char lvl);
-  static void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
+  void dumpTableAddrs(simple_pte *root, unsigned char lvl);
+  void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
 
   // NOTE: World of lambdas begins here.
-  static void printTraversalLamb(simple_pte *root, uint8_t lvl);
 
-  static void countValidPagesLamb(std::vector<uint64_t> &counts,
+  // Predicate, determines wether to follow this entyr.
+  typedef std::function<bool(simple_pte *curPte, uint8_t lvl)> predicateFn;
+  // Work to run before recursive call. TODO: is this necessary?
+  typedef std::function<void(simple_pte *curPte, uint8_t lvl)> beforeRecFn;
+  // Work to run after recursive call.
+  typedef std::function<void(simple_pte *childPte, simple_pte *curPte, uint8_t lvl)> afterRecFn;
+  // Work to run when a leaf PTE is uncovered.
+  typedef beforeRecFn leafFn;
+  // Work to run before returning to parent page table.
+  typedef beforeRecFn beforeRetFn;
+
+  // beforeRecFn nullBRF = [](simple_pte *curPte, uint8_t lvl){};
+  // afterRecFn  nullARF   = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl){};
+  // leafFn      nullLF    = nullBRF;
+  // beforeRetFn nullBRetF = nullBRF;
+
+   void printTraversalLamb(simple_pte *root, uint8_t lvl);
+
+   void countValidPagesLamb(std::vector<uint64_t> &counts,
                                   simple_pte *root, uint8_t lvl);
 
-  static void countAccessedPagesLamb(std::vector<uint64_t> &counts,
+   void countAccessedPagesLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl);
+
+   void countDirtyPagesLamb(std::vector<uint64_t> &counts,
                                   simple_pte *root, uint8_t lvl);
 
-  static void countDirtyPagesLamb(std::vector<uint64_t> &counts,
-                                  simple_pte *root, uint8_t lvl);
+   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
 
-  template <typename LeafFn>
-  static void traverseAccessedPages(simple_pte *root, uint8_t lvl, LeafFn L) {
-    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
-      // exists() is redundant assuming non existant ptes are 0.
-      return exists(curPte) && isAccessed(curPte);
-    };
+   void traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L);
 
-    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
-    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
+   void traverseValidPages(simple_pte *root, uint8_t lvl, beforeRecFn BR,
+                                 afterRecFn AR, leafFn L, beforeRetFn BRET);
 
-    traversePageTable(root, lvl, pred, nullFn, nullAftRecFn, L, nullFn);
-  }
+   simple_pte *traversePageTable(simple_pte *root, uint8_t lvl,
+                                       predicateFn P, beforeRecFn BR,
+                                       afterRecFn AR, leafFn L,
+                                       beforeRetFn BRET);
 
-  template <typename LeafFn>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl, LeafFn L) {
-    // Only takes a leaf function, rest are null.
-    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
-    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
-    traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
-  }
 
-  template <typename BefRecFn, typename AftRecFn, typename LeafFn, typename BefRetFn>
-  static void traverseValidPages(simple_pte *root, uint8_t lvl,
-                                 BefRecFn BR, AftRecFn AR, LeafFn L, BefRetFn BRET) {
-    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
-      return exists(curPte);
-    };
-    traversePageTable(root, lvl, pred, BR, AR, L, BRET);
-  }
+   bool exists (simple_pte *pte);
 
-  // Continue predicate, pre recursion, leaf, before return.
-  // TODO(tommyu): Spell out full name.
-  // TODO(tommyu): template too general, name types of lambdas.
-  template <typename PredFn, typename BefRecFn, typename AftRecFn,
-            typename LeafFn, typename BefRetFn>
-static simple_pte *traversePageTable(simple_pte *root, uint8_t lvl,
-                                     PredFn P, BefRecFn BR, AftRecFn AR,
-                                     LeafFn L, BefRetFn BRET) {
-    // A general page table traverser. Intention is not to call this directly
-    // from client code, but to make specializations, like a fn that only walks
-    // valid pages, accessed pages, dirty pages ...
-    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
-      simple_pte *curPte = root + i;
-
-      if (!P(curPte, lvl)) // ! allows pred to stay in positive sense for caller.
-        continue;
-
-      if (isLeaf(curPte, lvl)) { // -> a physical page of some sz.
-        L(curPte, lvl);
-
-      } else { // This entry points to a sub page table.
-        BR(curPte, lvl);
-        simple_pte *childRoot = traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, BR, AR, L, BRET);
-        // NOTE: This guy takes an extra arg.
-        AR(childRoot, curPte, lvl);
-      }
-  }
-  // NOTE: This guy takes root, not curPte!
-  BRET(root, lvl);
-  return root;
-}
-
-  static bool exists (simple_pte *pte);
-
-private:
-  UmPgTblMgr(); // Don't instantiate.
+  // namespace {
 
   // Mapper.
-  static simple_pte *mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
+   simple_pte *mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                         lin_addr virt, unsigned char rootLvl,
                                         unsigned char mapLvl, unsigned char curLvl);
 
 
   // Counter Helpers
-  static void countDirtyPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countAccessedPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
-  static void countValidPTEsHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+   void countDirtyPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+   void countAccessedPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+   void countValidPagesHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
+   void countValidPTEsHelper(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
-  // static void traverseValidPagesHelper(simple_pte *root, uint8_t);
+  //  void traverseValidPagesHelper(simple_pte *root, uint8_t);
   // Printers Debuggers
-  static void dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl);
+   void dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl);
 
-  static lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
-  static lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);
-  simple_pte *aAddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte *root,
+   lin_addr copyDirtyPage(lin_addr src, unsigned char lvl);
+   lin_addr reconstructLinAddrPgFromOffsets(uint64_t *idx);
+  simple_pte *AddrToPTEHelper(lin_addr la, uint64_t *offsets, simple_pte *root,
                                unsigned char lvl);
   lin_addr cr3ToAddr();
-  static simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
+   simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
                                unsigned char lvl);
-  static simple_pte *walkPgTblCopyDirtyHelper(simple_pte *root,
+   simple_pte *walkPgTblCopyDirtyHelper(simple_pte *root,
                                               simple_pte *copy,
                                               unsigned char lvl,
                                               uint64_t *idx);
 
-  static lin_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
-  static bool isLeaf     (simple_pte *pte, unsigned char lvl);
-  static bool isAccessed (simple_pte *pte);
-  static bool isDirty    (simple_pte *pte);
-  static bool isReadOnly (simple_pte *pte);
-  static bool isWritable (simple_pte *pte);
-};
-
-} // namespace umm
+   lin_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
+   bool isLeaf     (simple_pte *pte, unsigned char lvl);
+   bool isAccessed (simple_pte *pte);
+   bool isDirty    (simple_pte *pte);
+   bool isReadOnly (simple_pte *pte);
+   bool isWritable (simple_pte *pte);
+// } // anon namespace
+} // namespace UmPgTblMgmt
+}
 
 #endif //UMM_UM_PG_TBL_MGR

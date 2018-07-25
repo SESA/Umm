@@ -30,9 +30,9 @@ const char* level_names[] = {"NO_LEVEL",
 #define printf ebbrt::kprintf_force
 
 // TODO(tommyu): Is this ok usage?
+using namespace umm;
 using umm::lin_addr;
 using umm::simple_pte;
-using umm::UmPgTblMgr;
 
 simple_pte *dbPte; // Delete this.
 int ccc = 0;
@@ -43,8 +43,8 @@ void alignToLvl(unsigned char lvl){
   for (int j = 0; j<4-lvl; j++) printf("\t");
 }
 
-void UmPgTblMgr::reclaimAllPages(simple_pte *root, unsigned char lvl,
-                                        bool reclaimPhysical /*=true*/) {
+void UmPgTblMgmt::reclaimAllPages(simple_pte *root, unsigned char lvl,
+                                      bool reclaimPhysical /*=true*/) {
   // HACK(tommyu): Fails to remove top level table.
 
   // Loop over all entries in table.
@@ -80,12 +80,12 @@ void UmPgTblMgr::reclaimAllPages(simple_pte *root, unsigned char lvl,
          level_names[lvl], myPFN, myPFN.ToAddr());
   ebbrt::page_allocator->Free(myPFN, orders[TBL_LEVEL]);
 }
-void UmPgTblMgr::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
+void UmPgTblMgmt::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
   printf(GREEN "Root at %s: %p\n" RESET, level_names[lvl], root);
   dumpFullTableAddrsHelper(root, lvl);
 }
 
-void UmPgTblMgr::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
+void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
   alignToLvl(lvl);
@@ -113,7 +113,7 @@ void UmPgTblMgr::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   printf("]\n");
 }
 
-void UmPgTblMgr::dumpTableAddrs(simple_pte *root, unsigned char lvl){
+void UmPgTblMgmt::dumpTableAddrs(simple_pte *root, unsigned char lvl){
   // Dump contents of single table.
   for (int i = 0; i < 512; i++) {
     // Skip zero entries.
@@ -128,7 +128,7 @@ void UmPgTblMgr::dumpTableAddrs(simple_pte *root, unsigned char lvl){
   }
 }
 
-void UmPgTblMgr::countDirtyPagesHelper(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countDirtyPagesHelper(std::vector<uint64_t> &counts,
                                        simple_pte *root, uint8_t lvl) {
   for (int i = 0; i < 512; i++) {
     if (!exists(root + i)) {
@@ -146,7 +146,7 @@ void UmPgTblMgr::countDirtyPagesHelper(std::vector<uint64_t> &counts,
   }
 }
 
-void UmPgTblMgr::countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
+void UmPgTblMgmt::countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
   // Going to grab PML4, so better be lvl 4.
   if(root == nullptr){
     kassert(lvl == 4);
@@ -159,7 +159,7 @@ void UmPgTblMgr::countDirtyPages(std::vector<uint64_t> &counts, simple_pte *root
   countDirtyPagesHelper(counts, root, lvl);
 }
 
-void UmPgTblMgr::countAccessedPagesHelper(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countAccessedPagesHelper(std::vector<uint64_t> &counts,
                                           simple_pte *root, uint8_t lvl) {
   // Counts accessed leaf pages at various levels.
   for (int i = 0; i < 512; i++) {
@@ -175,7 +175,7 @@ void UmPgTblMgr::countAccessedPagesHelper(std::vector<uint64_t> &counts,
   }
 }
 
-void UmPgTblMgr::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
+void UmPgTblMgmt::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
   // Going to grab PML4, so better be lvl 4.
   if(root == nullptr){
     kassert(lvl == 4);
@@ -189,7 +189,7 @@ void UmPgTblMgr::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *r
 }
 
 // NOTE: World of lambdas begins here.
-void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
                                 simple_pte *root, uint8_t lvl) {
   // Counts number mapped pages.
   auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
@@ -198,7 +198,7 @@ void UmPgTblMgr::countValidPagesLamb(std::vector<uint64_t> &counts,
   traverseValidPages(root, lvl, leafFn);
 }
 
-void UmPgTblMgr::countAccessedPagesLamb(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countAccessedPagesLamb(std::vector<uint64_t> &counts,
                                      simple_pte *root, uint8_t lvl) {
   // Counts number mapped pages.
   auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
@@ -207,7 +207,7 @@ void UmPgTblMgr::countAccessedPagesLamb(std::vector<uint64_t> &counts,
   traverseAccessedPages(root, lvl, leafFn);
 }
 
-void UmPgTblMgr::countDirtyPagesLamb(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countDirtyPagesLamb(std::vector<uint64_t> &counts,
                                      simple_pte *root, uint8_t lvl) {
   // Counts number dirty pages.
   auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
@@ -219,7 +219,7 @@ void UmPgTblMgr::countDirtyPagesLamb(std::vector<uint64_t> &counts,
   traverseAccessedPages(root, lvl, leafFn);
 }
 
-void UmPgTblMgr::printTraversalLamb(simple_pte *root, uint8_t lvl) {
+void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
   // Dummy example for how one might use the general traverser.
   auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {
     return exists(curPte);
@@ -247,7 +247,65 @@ void UmPgTblMgr::printTraversalLamb(simple_pte *root, uint8_t lvl) {
                     );
 }
 
-void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,
+
+   void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
+    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+      // exists() is redundant assuming non existant ptes are 0.
+      return exists(curPte) && isAccessed(curPte);
+    };
+
+    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
+    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
+
+    traversePageTable(root, lvl, pred, nullFn, nullAftRecFn, L, nullFn);
+  }
+
+   void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L) {
+    // Only takes a leaf function, rest are null.
+    auto nullFn = [](simple_pte *curPte, uint8_t lvl){};
+    auto nullAftRecFn = [](simple_pte *childRoot, simple_pte *curPte, uint8_t lvl){};
+    // traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
+    traverseValidPages(root, lvl, nullFn, nullAftRecFn, L, nullFn);
+  }
+
+   void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl,
+                                 beforeRecFn BR, afterRecFn AR, leafFn L, beforeRetFn BRET) {
+    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+      return exists(curPte);
+    };
+    traversePageTable(root, lvl, pred, BR, AR, L, BRET);
+  }
+
+  // Continue predicate, pre recursion, leaf, before return.
+  // TODO(tommyu): Spell out full name.
+   simple_pte *UmPgTblMgmt::traversePageTable(simple_pte *root, uint8_t lvl,
+                                     predicateFn P, beforeRecFn BR, afterRecFn AR,
+                                     leafFn L, beforeRetFn BRET) {
+    // A general page table traverser. Intention is not to call this directly
+    // from client code, but to make specializations, like a fn that only walks
+    // valid pages, accessed pages, dirty pages ...
+    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
+      simple_pte *curPte = root + i;
+
+      if (!P(curPte, lvl)) // ! allows pred to stay in positive sense for caller.
+        continue;
+
+      if (isLeaf(curPte, lvl)) { // -> a physical page of some sz.
+        L(curPte, lvl);
+
+      } else { // This entry points to a sub page table.
+        BR(curPte, lvl);
+        simple_pte *childRoot = traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, BR, AR, L, BRET);
+        // NOTE: This guy takes an extra arg.
+        AR(childRoot, curPte, lvl);
+      }
+  }
+  // NOTE: This guy takes root, not curPte!
+  BRET(root, lvl);
+  return root;
+}
+
+void UmPgTblMgmt::countValidPTEsHelper(std::vector<uint64_t> &counts,
                                        simple_pte *root, uint8_t lvl) {
   // Counts valid leaf pages at various levels.
   for (int i = 0; i < 512; i++) {
@@ -260,7 +318,7 @@ void UmPgTblMgr::countValidPTEsHelper(std::vector<uint64_t> &counts,
   }
 }
 
-void UmPgTblMgr::countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
+void UmPgTblMgmt::countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
   // Going to grab PML4, so better be lvl 4.
   if(root == nullptr){
     kassert(lvl == 4);
@@ -273,7 +331,7 @@ void UmPgTblMgr::countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root,
   countValidPTEsHelper(counts, root, lvl);
 }
 
-void UmPgTblMgr::countValidPagesHelper(std::vector<uint64_t> &counts,
+void UmPgTblMgmt::countValidPagesHelper(std::vector<uint64_t> &counts,
                                        simple_pte *root, uint8_t lvl) {
   // Counts valid leaf pages at various levels.
   for (int i = 0; i < 512; i++) {
@@ -287,7 +345,7 @@ void UmPgTblMgr::countValidPagesHelper(std::vector<uint64_t> &counts,
   }
 }
 
-void UmPgTblMgr::countValidPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
+void UmPgTblMgmt::countValidPages(std::vector<uint64_t> &counts, simple_pte *root, uint8_t lvl) {
   // Going to grab PML4, so better be lvl 4.
   if(root == nullptr){
     kassert(lvl == 4);
@@ -301,7 +359,7 @@ void UmPgTblMgr::countValidPages(std::vector<uint64_t> &counts, simple_pte *root
 }
 
 
-lin_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
+lin_addr UmPgTblMgmt::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
   printf("la is %#0lx, offset is %lu, root is %p, lvl is %u\n", la.raw, la[lvl], root, lvl);
 
   if(!exists(root + la[lvl])){
@@ -328,7 +386,7 @@ lin_addr UmPgTblMgr::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigne
 
 }
 
-lin_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, unsigned char lvl /*=4*/) {
+lin_addr UmPgTblMgmt::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, unsigned char lvl /*=4*/) {
   // Error checks and hands off to helper.
 
   // Valid range for 4 level paging.
@@ -351,7 +409,7 @@ lin_addr UmPgTblMgr::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/, 
 }
 
 // TODO(tommyu): Delete me.
-simple_pte* UmPgTblMgr::getSlotPDPTRoot(){
+simple_pte* UmPgTblMgmt::getSlotPDPTRoot(){
   // Root of slot.
   simple_pte *root = getPML4Root();
   if(!exists(root + SLOT_PML4_NUM)){
@@ -482,7 +540,7 @@ lin_addr  simple_pte::cr3ToAddr(){
   return la;
 }
 
-simple_pte* UmPgTblMgr::nextTableOrFrame(simple_pte* pg_tbl_start, uint64_t pg_tbl_offset, unsigned char lvl) {
+simple_pte* UmPgTblMgmt::nextTableOrFrame(simple_pte* pg_tbl_start, uint64_t pg_tbl_offset, unsigned char lvl) {
   // Takes ptr to start of page table and offset, returns ptr to next table.
   simple_pte *pte_ptr;
 
@@ -505,47 +563,47 @@ simple_pte* UmPgTblMgr::nextTableOrFrame(simple_pte* pg_tbl_start, uint64_t pg_t
   return ret;
 }
 
-simple_pte* UmPgTblMgr::getPML4Root(){
+simple_pte* UmPgTblMgmt::getPML4Root(){
   simple_pte cr3;
   asm volatile("mov %%cr3, %[cr3]" : [cr3] "=r"(cr3));
   return (simple_pte *) cr3.cr3ToAddr().raw;
 }
 
-bool UmPgTblMgr::exists(simple_pte *pte){
+bool UmPgTblMgmt::exists(simple_pte *pte){
   if(pte->decompCommon.SEL == 1)
     return true;
   return false;
 }
 
-bool UmPgTblMgr::isWritable(simple_pte *pte){
+bool UmPgTblMgmt::isWritable(simple_pte *pte){
   if(pte->decompCommon.RW == 1){
     return true;
   }
   return false;
 }
 
-bool UmPgTblMgr::isReadOnly(simple_pte *pte){
+bool UmPgTblMgmt::isReadOnly(simple_pte *pte){
   if(pte->decompCommon.RW == 0){
     return true;
   }
   return false;
 }
 
-bool UmPgTblMgr::isDirty(simple_pte *pte){
+bool UmPgTblMgmt::isDirty(simple_pte *pte){
   if(pte->decompCommon.DIRTY){
     return true;
   }
   return false;
 }
 
-bool UmPgTblMgr::isAccessed(simple_pte *pte){
+bool UmPgTblMgmt::isAccessed(simple_pte *pte){
   if(pte->decompCommon.A){
     return true;
   }
   return false;
 }
 
-bool UmPgTblMgr::isLeaf(simple_pte *pte, unsigned char lvl){
+bool UmPgTblMgmt::isLeaf(simple_pte *pte, unsigned char lvl){
   if(lvl == TBL_LEVEL){
     return true;
   }
@@ -558,7 +616,7 @@ bool UmPgTblMgr::isLeaf(simple_pte *pte, unsigned char lvl){
   return false;
 }
 
-simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl) {
+simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl) {
   // Entry 0 is bogus and unused
 
   // HACK(tommyu): trying to get off the ground.
@@ -568,7 +626,7 @@ simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, 
   return walkPgTblCopyDirtyHelper(root, copy, lvl, idx);
 
 }
-simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) {
+simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) {
   // Entry 0 is bogus and unused
 
   // HACK(tommyu): trying to get off the ground.
@@ -587,7 +645,7 @@ simple_pte * UmPgTblMgr::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) 
   return ret;
 }
 
-lin_addr UmPgTblMgr::reconstructLinAddrPgFromOffsets(uint64_t *idx){
+lin_addr UmPgTblMgmt::reconstructLinAddrPgFromOffsets(uint64_t *idx){
   lin_addr la;
   la.raw = 0;
   la.tblOffsets.PML4 = idx[PML4_LEVEL];
@@ -602,7 +660,7 @@ lin_addr UmPgTblMgr::reconstructLinAddrPgFromOffsets(uint64_t *idx){
   return la;
 }
 
-lin_addr UmPgTblMgr::copyDirtyPage(lin_addr src, unsigned char lvl){
+lin_addr UmPgTblMgmt::copyDirtyPage(lin_addr src, unsigned char lvl){
   auto page = ebbrt::page_allocator->Alloc();
   kbugon(page == Pfn::None());
   auto page_addr = page.ToAddr();
@@ -647,14 +705,14 @@ void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
   raw = pte.raw;
 }
 
-simple_pte *UmPgTblMgr::mapIntoPgTbl(simple_pte *root, lin_addr phys,
+simple_pte *UmPgTblMgmt::mapIntoPgTbl(simple_pte *root, lin_addr phys,
                                            lin_addr virt, unsigned char rootLvl,
                                            unsigned char mapLvl,
                                            unsigned char curLvl) {
   return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl);
 }
 
-simple_pte *UmPgTblMgr::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
+simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                      lin_addr virt, unsigned char rootLvl,
                                      unsigned char mapLvl,
                                      unsigned char curLvl) {
@@ -696,7 +754,7 @@ simple_pte *UmPgTblMgr::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   return root;
 }
 
-simple_pte *UmPgTblMgr::walkPgTblCopyDirtyHelper(simple_pte *root,
+simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyHelper(simple_pte *root,
                                                  simple_pte *copy,
                                                  unsigned char lvl,
                                                  uint64_t *idx) {

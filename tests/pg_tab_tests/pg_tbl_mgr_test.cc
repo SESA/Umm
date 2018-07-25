@@ -11,10 +11,9 @@
 #include <UmPgTblMgr.h>
 #include <Umm.h>
 
-
+using namespace umm;
 using umm::lin_addr;
 using umm::simple_pte;
-using umm::UmPgTblMgr;
 
 
 lin_addr getPhysPg(uint8_t sz){
@@ -41,10 +40,10 @@ void runHelloWorld() {
   // Run rumprun's helloworld.
   printf(YELLOW "%s\n" RESET, __func__);
   // Generated UM Instance from the linked in Elf
-  umm::UmManager::Init();
-  auto snap = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
-  umm::manager->Load(std::move(snap));
-  umm::manager->Start();
+  UmManager::Init();
+  auto snap = ElfLoader::CreateInstanceFromElf(&_sv_start);
+  manager->Load(std::move(snap));
+  manager->Start();
 }
 
 void testCountValidPages(){
@@ -53,7 +52,7 @@ void testCountValidPages(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countValidPages(counts);
+  UmPgTblMgmt::countValidPages(counts);
   printf("Valid pages before running target:\n");
   printCounts(counts);
 
@@ -62,7 +61,7 @@ void testCountValidPages(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nValid pages after running target:\n");
-  UmPgTblMgr::countValidPages(counts);
+  UmPgTblMgmt::countValidPages(counts);
   printCounts(counts);
 }
 void testCountValidPagesLamb(){
@@ -71,7 +70,7 @@ void testCountValidPagesLamb(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countValidPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countValidPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printf("Valid pages before running target:\n");
   printCounts(counts);
 
@@ -80,7 +79,7 @@ void testCountValidPagesLamb(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nValid pages after running target:\n");
-  UmPgTblMgr::countValidPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countValidPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printCounts(counts);
 }
 
@@ -89,7 +88,7 @@ void testCountAccessedPages(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countAccessedPages(counts);
+  UmPgTblMgmt::countAccessedPages(counts);
   printf("Accessed pages before running target:\n");
   printCounts(counts);
 
@@ -98,7 +97,7 @@ void testCountAccessedPages(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nAccessed pages after running target:\n");
-  UmPgTblMgr::countAccessedPages(counts);
+  UmPgTblMgmt::countAccessedPages(counts);
   printCounts(counts);
 }
 
@@ -107,7 +106,7 @@ void testCountAccessedPagesLamb(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countAccessedPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countAccessedPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printf("Accessed pages before running target:\n");
   printCounts(counts);
 
@@ -116,7 +115,7 @@ void testCountAccessedPagesLamb(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nAccessed pages after running target:\n");
-  UmPgTblMgr::countAccessedPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countAccessedPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printCounts(counts);
 }
 
@@ -125,7 +124,7 @@ void testCountDirtyPages(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countDirtyPages(counts);
+  UmPgTblMgmt::countDirtyPages(counts);
   printf("Dirty pages before running target:\n");
   printCounts(counts);
 
@@ -134,7 +133,7 @@ void testCountDirtyPages(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nDirty pages after running target:\n");
-  UmPgTblMgr::countDirtyPages(counts);
+  UmPgTblMgmt::countDirtyPages(counts);
   printCounts(counts);
 }
 
@@ -143,7 +142,7 @@ void testCountDirtyPagesLamb(){
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countDirtyPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countDirtyPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printf("Dirty pages before running target:\n");
   printCounts(counts);
 
@@ -152,7 +151,7 @@ void testCountDirtyPagesLamb(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nDirty pages after running target:\n");
-  UmPgTblMgr::countDirtyPagesLamb(counts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countDirtyPagesLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printCounts(counts);
 }
 
@@ -166,7 +165,7 @@ void testCountDirtyPagesInSlot(){
   std::fill(counts.begin(), counts.end(), 0);
 
   printf("\nDirty pages in Slot after running target:\n");
-  UmPgTblMgr::countDirtyPages(counts, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL);
+  UmPgTblMgmt::countDirtyPages(counts, UmPgTblMgmt::getSlotPDPTRoot(), PDPT_LEVEL);
   printCounts(counts);
 }
 
@@ -183,9 +182,9 @@ void map4K(){
   printf("Phys is %lx\n", phys.raw);
 
   // The mapping happens here.
-  simple_pte *table_top = UmPgTblMgr::mapIntoPgTbl(root, phys, virt, rootLvl, mapLvl, curLvl);
+  simple_pte *table_top = UmPgTblMgmt::mapIntoPgTbl(root, phys, virt, rootLvl, mapLvl, curLvl);
 
-  lin_addr pa = UmPgTblMgr::getPhysAddrRec(virt, table_top, 3);
+  lin_addr pa = UmPgTblMgmt::getPhysAddrRec(virt, table_top, 3);
 
   printf(GREEN "Query for backing page: virt %lx -> %lx\n", virt.raw, pa.raw);
 
@@ -203,17 +202,17 @@ testMapping4kHelper(simple_pte *root, lin_addr phys, lin_addr virt){
   }
   printf(RESET " ->" RED "%p\n" RESET, phys);
 
-  root = UmPgTblMgr::mapIntoPgTbl(root, phys, virt,
+  root = UmPgTblMgmt::mapIntoPgTbl(root, phys, virt,
                            (unsigned char)PDPT_LEVEL, (unsigned char)TBL_LEVEL, (unsigned char)PDPT_LEVEL);
 
   printf(YELLOW "Sanity check, dump counts of valid PTEs\n" RESET);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
 
-  UmPgTblMgr::countValidPTEs(counts, root, PDPT_LEVEL);
+  UmPgTblMgmt::countValidPTEs(counts, root, PDPT_LEVEL);
   printCounts(counts);
 
   printf(YELLOW "Dump all branches of page table\n" RESET);
-  UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
   return root;
 }
@@ -262,18 +261,18 @@ void testCopyDirtyPages4K(){
 
   std::vector<uint64_t> ValidPTECounts(5); // Vec of size 5, zero elements.
 
-  // UmPgTblMgr::countValidPTEs(ValidPTECounts, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL);
-  UmPgTblMgr::countDirtyPages(ValidPTECounts, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgr::getSlotPDPTRoot(), PDPT_LEVEL);
+  // UmPgTblMgmt::countValidPTEs(ValidPTECounts, UmPgTblMgmt::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgmt::getSlotPDPTRoot(), PDPT_LEVEL);
+  UmPgTblMgmt::countDirtyPages(ValidPTECounts, UmPgTblMgmt::getSlotPDPTRoot(), PDPT_LEVEL); //, UmPgTblMgmt::getSlotPDPTRoot(), PDPT_LEVEL);
   printf("After HW, # dirty pages in slot \n");
   printCounts(ValidPTECounts);
 
   printf(CYAN "Bout to start copy of dirty pages\n" RESET);
-  simple_pte *copyPT = UmPgTblMgr::walkPgTblCopyDirty(nullptr);
+  simple_pte *copyPT = UmPgTblMgmt::walkPgTblCopyDirty(nullptr);
   printf(CYAN "Done copy of dirty pages\n" RESET);
 
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
   printf("Look at Valid Pages\n");
-  UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
+  UmPgTblMgmt::countValidPages(counts, copyPT, PDPT_LEVEL);
   printCounts(counts);
 }
 
@@ -286,17 +285,17 @@ testMapping2MHelper(simple_pte *root, lin_addr phys, lin_addr virt){
   }
   printf(RESET " ->" RED "%p\n" RESET, phys);
 
-  root = UmPgTblMgr::mapIntoPgTbl(root, phys, virt,
+  root = UmPgTblMgmt::mapIntoPgTbl(root, phys, virt,
                                   (unsigned char)PDPT_LEVEL, (unsigned char)DIR_LEVEL, (unsigned char)PDPT_LEVEL);
 
   printf(YELLOW "Sanity check, dump counts of valid PTEs\n" RESET);
 
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
-  UmPgTblMgr::countValidPTEs(counts, root, PDPT_LEVEL);
+  UmPgTblMgmt::countValidPTEs(counts, root, PDPT_LEVEL);
   printCounts(counts);
 
   printf(YELLOW "Dump all branches of page table\n" RESET);
-  UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
   return root;
 }
@@ -325,39 +324,39 @@ void testMapping2M(){
 }
 
 void testDumpSystemValidPages(){
-  UmPgTblMgr::dumpFullTableAddrs(UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::dumpFullTableAddrs(UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
-  UmPgTblMgr::countValidPages(counts);
+  UmPgTblMgmt::countValidPages(counts);
   printCounts(counts);
 }
 
 void testCopyDirtyPages(){
   std::vector<uint64_t> ValidPTECounts(5); // Vec of size 5, zero elements.
-  UmPgTblMgr::countDirtyPages(ValidPTECounts, UmPgTblMgr::getPML4Root(), PML4_LEVEL);
+  UmPgTblMgmt::countDirtyPages(ValidPTECounts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
   printf("No HW, # dirty pages in slot: \n");
   printCounts(ValidPTECounts);
 
   printf(CYAN "Bout to start copy of dirty pages\n" RESET);
-  simple_pte *copyPT = UmPgTblMgr::walkPgTblCopyDirty(nullptr);
+  simple_pte *copyPT = UmPgTblMgmt::walkPgTblCopyDirty(nullptr);
   printf(CYAN "Done copy of dirty pages\n" RESET);
 
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
   printf("Look at Valid Pages\n");
-  UmPgTblMgr::countValidPages(counts, copyPT, PDPT_LEVEL);
+  UmPgTblMgmt::countValidPages(counts, copyPT, PDPT_LEVEL);
   printCounts(counts);
 }
 
 void testReclaimAllPages(simple_pte *root){
   printf(YELLOW "%s\n" RESET, __func__);
-  UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
-  UmPgTblMgr::reclaimAllPages(root, PDPT_LEVEL);
+  UmPgTblMgmt::reclaimAllPages(root, PDPT_LEVEL);
 }
 
 void AppMain() {
   // Note looks like Valid pages count works.
   // testCountValidPages();
-  testCountValidPagesLamb();
+  // testCountValidPagesLamb();
 
   // Note looks like Accessed pages count works.
   // testCountAccessedPages();
@@ -366,7 +365,7 @@ void AppMain() {
 
   // Note looks like Dirty pages count works.
   // testCountDirtyPages();
-  // testCountDirtyPages();
+  testCountDirtyPagesLamb();
 
   // testMapping4K();
 
@@ -375,29 +374,21 @@ void AppMain() {
 
   // simple_pte *root = testMapping4K();
   // // testReclaimAllPages(root);
-  // // UmPgTblMgr::dumpFullTableAddrs(root, PDPT_LEVEL);
+  // // UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
-  // UmPgTblMgr::printTraversalLamb(root, PDPT_LEVEL);
+  // UmPgTblMgmt::printTraversalLamb(root, PDPT_LEVEL);
 
-  while(1);
+  // while(1);
 
   // std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
-  // UmPgTblMgr::countValidPages(counts, root, PDPT_LEVEL);
+  // UmPgTblMgmt::countValidPages(counts, root, PDPT_LEVEL);
   // printf("Non Lambda\n");
   // printCounts(counts);
 
   // std::vector<uint64_t> counts2(5); // Vec of size 5, zero elements.
-  // UmPgTblMgr::countValidPagesLamb(counts2, root, PDPT_LEVEL);
+  // UmPgTblMgmt::countValidPagesLamb(counts2, root, PDPT_LEVEL);
   // printf("Lambda\n");
   // printCounts(counts2);
 
   printf(RED "Done %s\n", __func__);
 }
-
-  // UmPgTblMgr::traverseValidPages(root, PDPT_LEVEL,
-  //                                []() -> void { printf("Rec\n\n");},
-  //                                []() -> void { printf("Leaf\n");},
-  //                                [&]() -> void { printf("PostLoop, %s\n",
-  //                                                      level_names[lvl]);}
-  //                                );
-

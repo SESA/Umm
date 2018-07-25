@@ -139,12 +139,12 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   //   Update PML4[0x180]
   // Else, call map using.
 
-  simple_pte* PML4Root = UmPgTblMgr::getPML4Root();
+  simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
   simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
 
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry.
-    auto pdpt = UmPgTblMgr::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
+    auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                          TBL_LEVEL, PDPT_LEVEL);
 
     // "Install"
@@ -152,15 +152,15 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   } else {
     // Slot root holds ptr to sub PT.
-    UmPgTblMgr::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
+    UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
                              phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL);
   }
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
   // Root of slot.
-  simple_pte *root = UmPgTblMgr::getPML4Root();
-  if(!UmPgTblMgr::exists(root + kSlotPML4Offset)){
+  simple_pte *root = UmPgTblMgmt::getPML4Root();
+  if(!UmPgTblMgmt::exists(root + kSlotPML4Offset)){
     return nullptr;
   }
   // TODO(tommyu): don't really need to deref.
@@ -171,7 +171,7 @@ umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
 
 void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   kassert(newRoot != nullptr);
-  (UmPgTblMgr::getPML4Root()+ kSlotPML4Offset)->tableOrFramePtrToPte(newRoot);
+  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->tableOrFramePtrToPte(newRoot);
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
