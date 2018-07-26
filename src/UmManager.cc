@@ -123,6 +123,8 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
     kprintf(RED "Umm... Snapshot Pagefault\n" RESET);
 
+  kassert(valid_address(vaddr));
+
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
   lin_addr virt;

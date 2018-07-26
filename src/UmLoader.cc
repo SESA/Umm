@@ -112,8 +112,12 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
       // Assume a link_set_* section and include it the current section
       kprintf("Extra data section found: %s\n", sh_name.c_str());
       i++;
-      // Expand the Region length to include this addition section
-      // XXX(jmcadden): New offset does not account for section alignment
+      // Expand Region length to include addition section
+      if (reg.start + reg.length < nxt_sh->sh_addr) {
+        // added space for alignment 
+        auto buff = nxt_sh->sh_addr - (reg.start + reg.length);
+        reg.length += buff ;
+      }
       reg.length += nxt_sh->sh_size;
     }
 
