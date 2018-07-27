@@ -10,49 +10,122 @@
 #include "UmManager.h"
 
 #include <ebbrt/native/Clock.h>
-  
-const char opt_debug[] = "--solo5:debug";
 
-namespace umm{
+#include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
-#define SOLO5_USR_REGION_SIZE 1<<28 
+// const std::string opts_ = R"({"cmdline":"bin/node-default",
+// "net":{"if":"ukvmif0","cloner":"True","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
+// const std::string opts_ = R"({"cmdline":"bin/node-default",
+// "blk":{"source":"etfs","path":"/ld0a","fstype":"blk","mountpoint":"/data"}})";
+const std::string opts_ = "";
 
-struct ukvm_cpu_boot_info {
-  uint64_t tsc_freq = 2599997000; 
-  uint64_t ebbrt_printf_addr;
-  uint64_t ebbrt_walltime_addr;
-  uint64_t ebbrt_exit_addr;
-};
+#define SOLO5_USR_REGION_SIZE 1 << 28
+#define SOLO5_CPU_TSC_FREQ 2599997000
 
-struct ukvm_boot_info {
-  uint64_t mem_size;
-  uint64_t kernel_end;
-  char *cmdline;
-  ukvm_cpu_boot_info cpu;
-};
-
-static uint64_t wallclock_kludge() {
+static int solo5_hypercall_walltime(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_walltime *)arg;
   auto tp = ebbrt::clock::Wall::Now();
   auto dur = tp.time_since_epoch();
   auto dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
-  return dur_ns.count();
+  arg_->nsecs = dur_ns.count();
+  kprintf("EbbRT walltime is %llu\n", arg_->nsecs);
+  return 0;
 }
 
-static void exit_kludge() {
+static int solo5_hypercall_puts(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_puts *)arg;
+  for (unsigned int i = 0; i < arg_->len; i++)
+    kprintf_force("%c", arg_->data[i]);
+  return 0;
+}
+
+static int solo5_hypercall_poll(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_poll *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall poll \n");
+  return 1;
+}
+
+static int solo5_hypercall_blkinfo(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_blkinfo *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall blkinfo \n");
+  return 1;
+}
+
+static int solo5_hypercall_blkread(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_blkread *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall blkread \n");
+  return 1;
+}
+
+static int solo5_hypercall_blkwrite(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_blkwrite *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall blkwrite \n");
+  return 1;
+}
+
+static int solo5_hypercall_netinfo(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netinfo *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall netinfo \n");
+  return 1;
+}
+
+static int solo5_hypercall_netwrite(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netwrite *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall netwrite \n");
+  return 1;
+}
+
+static int solo5_hypercall_netread(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netread *)arg;
+  (void)arg_;
+  kprintf("Error: Unsupported hypercall netread \n");
+  return 1;
+}
+
+static int solo5_hypercall_halt(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_halt *)arg;
+  (void)arg_;
+  kprintf("\nHalting Solo5. Goodbye!\n");
   umm::manager->Start();
+  return 0;
 }
 
-static inline uint64_t Solo5BootArguments(uint64_t kernel_end, uint64_t mem_size) {
-  // Solo5 boot arguments
+// Set solo5 boot arguments
+static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
+                                          uint64_t mem_size) {
   auto kern_info = new struct ukvm_boot_info;
   kern_info->mem_size = mem_size;
   kern_info->kernel_end = kernel_end;
-  kern_info->cmdline = (char*) opt_debug;
-  kern_info->cpu.ebbrt_printf_addr = (uint64_t)kprintf_force;
-  kern_info->cpu.ebbrt_walltime_addr = (uint64_t)wallclock_kludge;
-  kern_info->cpu.ebbrt_exit_addr = (uint64_t)exit_kludge;
+  kern_info->cmdline = (char *)opts_.c_str();
+  kern_info->cpu.tsc_freq = SOLO5_CPU_TSC_FREQ;
+  // solo5 hypercalls
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_WALLTIME] =
+      (uint64_t)solo5_hypercall_walltime;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_PUTS] =
+      (uint64_t)solo5_hypercall_puts;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_POLL] =
+      (uint64_t)solo5_hypercall_poll;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_BLKINFO] =
+      (uint64_t)solo5_hypercall_blkinfo;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_BLKWRITE] =
+      (uint64_t)solo5_hypercall_blkwrite;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_BLKREAD] =
+      (uint64_t)solo5_hypercall_blkread;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_NETINFO] =
+      (uint64_t)solo5_hypercall_netinfo;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_NETWRITE] =
+      (uint64_t)solo5_hypercall_netwrite;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_NETREAD] =
+      (uint64_t)solo5_hypercall_netread;
+  kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_HALT] =
+      (uint64_t)solo5_hypercall_halt;
   return (uint64_t)kern_info;
-}
 }
 
 #endif // UMM_UM_SOLO5_H_
