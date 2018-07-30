@@ -11,3 +11,6 @@
 	url = https://github.com/ricarkol/rumprun-packages.git
 	branch = solo5
 	ignore = dirty
+[submodule "ext/incubator-openwhisk-runtime-nodejs"]
+	path = ext/incubator-openwhisk-runtime-nodejs
+	url = https://github.com/apache/incubator-openwhisk-runtime-nodejs

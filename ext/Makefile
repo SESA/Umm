@@ -7,6 +7,7 @@ SOLO5_OBJ ?= $(SOLO5_DIR)/kernel/ebbrt/solo5.o
 # rumprun
 RUMP_DIR ?= $(EXT_PATH)/rumprun
 RUMP_BAKE = $(RUMP_DIR)/rumprun-solo5/bin/rumprun-bake
+RUMP_COOKFS = $(RUMP_DIR)/rumprun-solo5/bin/x86_64-rumprun-netbsd-cookfs
 RUMP_SOLO5_X86_64=$(RUMP_DIR)/rumprun-solo5/rumprun-x86_64/lib
 RUMP_SOLO5_UKVM=$(RUMP_SOLO5_X86_64)/rumprun-solo5/libsolo5_ukvm.a
 

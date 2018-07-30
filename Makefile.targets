@@ -3,16 +3,25 @@
 -include ../../Makefile.common
 -include $(EXTDIR)/Makefile
 
-TARGET ?= nodejs # Default target
+TARGET ?= nodejsAction # Default target
 
-.PHONY: nodejs solo5-abort solo5-blk solo5-exception solo5-globals solo5-hello solo5-ping solo5-quiet solo5-time
+.PHONY: nodejs nodejsAction solo5-abort solo5-blk solo5-exception solo5-globals solo5-hello solo5-ping solo5-quiet solo5-time
 
 #For all tests:
 #copy in the target binary named simply as 'target'
 
 # RUMP TARGETS 
-
 RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
+
+# nodejsAction
+NODEJSACTIONDIR ?= $(EXT_PATH)/incubator-openwhisk-runtime-nodejs/core
+NODEJSACTIONFS ?= $(NODEJSACTIONDIR)/nodejsAction.fs
+
+$(NODEJSACTIONFS): 
+	$(CD) $(NODEJSACTIONDIR) && $(RUMP_COOKFS) nodejsAction.fs nodejsActionBase
+
+nodejsAction: $(NODEJSACTIONFS) $(NODEJS_BIN)
+	$(RUMP_BAKE) -m "add $(NODEJSACTIONFS)" solo5_ukvm_net target $(NODEJS_BIN)
 
 rump-hello: rumprun 
 	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPHELLOER) -o $< $(RUMPRUN_LDLIBS)
