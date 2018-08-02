@@ -5,9 +5,13 @@
 #ifndef UMM_UM_MANAGER_H_
 #define UMM_UM_MANAGER_H_
 
+#include <ebbrt/Clock.h>
 #include <ebbrt/EbbId.h>
+#include <ebbrt/EventManager.h>
 #include <ebbrt/GlobalStaticIds.h>
 #include <ebbrt/MulticoreEbb.h>
+#include <ebbrt/Timer.h>
+
 #include <ebbrt/native/VMemAllocator.h>
 
 #include "UmInstance.h"
@@ -27,11 +31,18 @@ const uint16_t kSlotPML4Offset = 0x180;
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
-class UmManager : public ebbrt::MulticoreEbb<UmManager> {
+class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
-  enum Status : uint8_t { empty = 0, loaded, running, snapshot, finished };
+  enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
+
+  /** Timer event handler */
+  void Fire() override;
+
+  void SetTimer(ebbrt::clock::Wall::time_point now);
+  void DisableTimers();
+  void Block(size_t ns);
 
   /** Class-wide static initialization logic */
   static void Init(); 
@@ -86,6 +97,11 @@ private:
   /* Session specific values */
   UmmStatus status_; // TODO: SlotStatus
   // TODO: Move some of these into the Instance ??? 
+
+  bool timer_set = false;
+  ebbrt::clock::Wall::time_point time_wait; // block until this time
+  ebbrt::EventManager::EventContext *context_; // ebbrt event context
+
   ExceptionFrame caller_restore_frame_; 
   ExceptionFrame snap_restore_frame_; 
   std::unique_ptr<UmInstance> umi_;

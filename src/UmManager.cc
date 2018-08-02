@@ -67,9 +67,16 @@ void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
       break;
     goto OK;
   case running:
-    if (s_ != loaded && s_ != snapshot) // Run when loaded or more
+    if (s_ != loaded && s_ != snapshot && s_ != blocked) 
       break;
     clock_ = ebbrt::clock::Wall::Now(); 
+    goto OK;
+  case blocked:
+    if (s_ != running ) // Only block when running 
+      break;
+    // Log execution time before blocking. We'll resume the clock when running
+    runtime_ +=
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_).count();
     goto OK;
   case snapshot:
     if (s_ != running) // Only snapshot when running <??
@@ -244,3 +251,55 @@ ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   return umi_snapshot_.GetFuture();
 }
 
+void umm::UmManager::Fire(){
+  kassert(timer_set);
+  timer_set = false;
+  // We take a single clock reading which we use to simplify some corner cases
+  // with respect to enabling the timer. This way there is a single time point
+  // when this event occurred and all clock computations can be relative to it.
+  auto now = ebbrt::clock::Wall::Now();
+
+  // If we reached the time_blocked period then unblock the execution 
+  if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
+    time_wait = ebbrt::clock::Wall::time_point(); // clear the time
+
+    // Unblock instance
+    status_.set(running);
+    ebbrt::event_manager->ActivateContext(std::move(*context_));
+  }
+  //kabort("UmManager timeout error: blocking indefinitley\n");
+}
+
+void umm::UmManager::Block(size_t ns){
+  kassert(!timer_set);
+  if(!ns)
+    return;
+
+  auto now = ebbrt::clock::Wall::Now();
+  time_wait = now + std::chrono::nanoseconds(ns);
+  SetTimer(now);
+  status_.set(blocked);
+  context_ = new ebbrt::EventManager::EventContext();
+  ebbrt::event_manager->SaveContext(*context_);
+}
+
+void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
+  if (timer_set)
+    return;
+
+  if (now >= time_wait) {
+    return;
+  }
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
+  ebbrt::timer->Start(*this, duration, /* repeat = */ false);
+  timer_set = true;
+}
+
+void umm::UmManager::DisableTimers(){ 
+  if (timer_set) {
+    ebbrt::timer->Stop(*this);
+  }
+  timer_set = false;
+  time_wait = ebbrt::clock::Wall::time_point(); // clear timer
+}
