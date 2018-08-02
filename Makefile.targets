@@ -15,9 +15,13 @@ RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
 
 # nodejsAction
 NODEJSACTIONDIR ?= $(EXT_PATH)/incubator-openwhisk-runtime-nodejs/core
-NODEJSACTIONFS ?= $(NODEJSACTIONDIR)/nodejsAction.fs
+NODEJSACTIONFS = $(NODEJSACTIONDIR)/nodejsAction.fs
+NODEJSACTIONMODULES = $(NODEJSACTIONDIR)/nodejsActionBase/node_modules
 
-$(NODEJSACTIONFS): 
+$(NODEJSACTIONMODULES):
+	$(CD) $(NODEJSACTIONDIR)/nodejsActionBase && npm install --production 
+
+$(NODEJSACTIONFS): $(NODEJSACTIONMODULES)
 	$(CD) $(NODEJSACTIONDIR) && $(RUMP_COOKFS) nodejsAction.fs nodejsActionBase
 
 nodejsAction: $(NODEJSACTIONFS) $(NODEJS_BIN)
