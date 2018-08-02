@@ -8,19 +8,91 @@
 #include "umm-common.h"
 
 #include "UmManager.h"
+#include "UmProxy.h"
 
 #include <ebbrt/native/Clock.h>
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
-// const std::string opts_ = R"({"cmdline":"bin/node-default",
+//const std::string opts_ = "";
+//const std::string opts_ = R"({"cmdline":"bin/node-default",
 // "net":{"if":"ukvmif0","cloner":"True","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
 // const std::string opts_ = R"({"cmdline":"bin/node-default",
 // "blk":{"source":"etfs","path":"/ld0a","fstype":"blk","mountpoint":"/data"}})";
-const std::string opts_ = "";
+const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
+ "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
 
 #define SOLO5_USR_REGION_SIZE 1 << 28
 #define SOLO5_CPU_TSC_FREQ 2599997000
+
+/*
+ * Block until timeout_nsecs have passed or I/O is
+ * possible, whichever is sooner. Returns 1 if I/O is possible, otherwise 0.
+ */
+static int solo5_hypercall_poll(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_poll *)arg;
+  arg_->ret = 0;
+  umm::manager->Block(arg_->timeout_nsecs);
+  // return from block
+  if(umm::proxy->BytesAvailable()){
+    arg_->ret = 1;
+  }
+  return 0;
+}
+
+static int solo5_hypercall_netinfo(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netinfo *)arg;
+  auto ma = umm::proxy->MacAddress();
+  arg_->mac_address[0] = ma[0];
+  arg_->mac_address[1] = ma[1];
+  arg_->mac_address[2] = ma[2];
+  arg_->mac_address[3] = ma[3];
+  arg_->mac_address[4] = ma[4];
+  arg_->mac_address[5] = ma[5];
+  return 0;
+}
+
+/* UKVM_HYPERCALL_NETWRITE 
+struct ukvm_netwrite {
+    //IN 
+    UKVM_GUEST_PTR(const void *) data;
+    size_t len;
+
+    //OUT
+    int ret; // amount written 
+}; */
+static int solo5_hypercall_netwrite(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netwrite *)arg;
+  arg_->ret = umm::proxy->NetWrite(arg_->data, arg_->len);
+  return 0;
+}
+
+/* UKVM_HYPERCALL_NETREAD 
+struct ukvm_netread {
+    // IN 
+    UKVM_GUEST_PTR(void *) data;
+
+    // IN/OUT
+    size_t len; // amount read
+
+    // OUT
+    int ret; // 0=OK
+}; */
+static int solo5_hypercall_netread(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_netread *)arg;
+  arg_->len = umm::proxy->NetRead(arg_->data, arg_->len);
+  // ret is 0 on successful read, 1 otherwise
+  arg_->ret = (arg_->len > 0) ? 0 : 1;
+  return 0;
+}
+
+static int solo5_hypercall_halt(volatile void *arg) {
+  auto arg_ = (volatile struct ukvm_halt *)arg;
+  (void)arg_;
+  kprintf("\nHalting Solo5. Goodbye!\n");
+  umm::manager->Start();
+  return 0;
+}
 
 static int solo5_hypercall_walltime(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_walltime *)arg;
@@ -37,13 +109,6 @@ static int solo5_hypercall_puts(volatile void *arg) {
   for (unsigned int i = 0; i < arg_->len; i++)
     kprintf_force("%c", arg_->data[i]);
   return 0;
-}
-
-static int solo5_hypercall_poll(volatile void *arg) {
-  auto arg_ = (volatile struct ukvm_poll *)arg;
-  (void)arg_;
-  kprintf("Error: Unsupported hypercall poll \n");
-  return 1;
 }
 
 static int solo5_hypercall_blkinfo(volatile void *arg) {
@@ -65,35 +130,6 @@ static int solo5_hypercall_blkwrite(volatile void *arg) {
   (void)arg_;
   kprintf("Error: Unsupported hypercall blkwrite \n");
   return 1;
-}
-
-static int solo5_hypercall_netinfo(volatile void *arg) {
-  auto arg_ = (volatile struct ukvm_netinfo *)arg;
-  (void)arg_;
-  kprintf("Error: Unsupported hypercall netinfo \n");
-  return 1;
-}
-
-static int solo5_hypercall_netwrite(volatile void *arg) {
-  auto arg_ = (volatile struct ukvm_netwrite *)arg;
-  (void)arg_;
-  kprintf("Error: Unsupported hypercall netwrite \n");
-  return 1;
-}
-
-static int solo5_hypercall_netread(volatile void *arg) {
-  auto arg_ = (volatile struct ukvm_netread *)arg;
-  (void)arg_;
-  kprintf("Error: Unsupported hypercall netread \n");
-  return 1;
-}
-
-static int solo5_hypercall_halt(volatile void *arg) {
-  auto arg_ = (volatile struct ukvm_halt *)arg;
-  (void)arg_;
-  kprintf("\nHalting Solo5. Goodbye!\n");
-  umm::manager->Start();
-  return 0;
 }
 
 // Set solo5 boot arguments

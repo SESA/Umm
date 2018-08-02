@@ -4,6 +4,7 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "UmManager.h"
+#include "UmProxy.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
@@ -23,6 +24,10 @@ extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
 void umm::UmManager::Init() {
   // Setup multicore Ebb translation
   Create(UmManager::global_id);
+  
+  // Initialize the UmProxy Ebb
+  UmProxy::Init();
+  
   // Reserve virtual region for slot and setup a fault handler 
   auto hdlr = std::make_unique<PageFaultHandler>();
   ebbrt::vmem_allocator->AllocRange(kSlotPageLength, kSlotStartVAddr,
