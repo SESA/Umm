@@ -83,6 +83,44 @@ void testCountValidPagesLamb(){
   printCounts(counts);
 }
 
+void testCountValidPTEs(){
+  // Traverse page table and count leaf PTEs.
+  printf(YELLOW "%s\n" RESET, __func__);
+  printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgmt::countValidPTEs(counts);
+  printf("Valid pages before running target:\n");
+  printCounts(counts);
+
+  runHelloWorld();
+
+  std::fill(counts.begin(), counts.end(), 0);
+
+  printf("\nValid pages after running target:\n");
+  UmPgTblMgmt::countValidPTEs(counts);
+  printCounts(counts);
+}
+
+void testCountValidPTEsLamb(){
+  // Traverse page table and count leaf PTEs.
+  printf(YELLOW "%s\n" RESET, __func__);
+  printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
+  std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+
+  UmPgTblMgmt::countValidPTEsLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
+  printf("Valid pages before running target:\n");
+  printCounts(counts);
+
+  runHelloWorld();
+
+  std::fill(counts.begin(), counts.end(), 0);
+
+  printf("\nValid pages after running target:\n");
+  UmPgTblMgmt::countValidPTEsLamb(counts, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
+  printCounts(counts);
+}
+
 void testCountAccessedPages(){
   printf(YELLOW "%s\n" RESET, __func__);
   printf(RED "Note, this test is intended to be run in isolation.\n" RESET);
@@ -356,7 +394,7 @@ void testReclaimAllPages(simple_pte *root){
 void AppMain() {
   // Note looks like Valid pages count works.
   // testCountValidPages();
-  testCountValidPagesLamb();
+  // testCountValidPagesLamb();
 
   // Note looks like Accessed pages count works.
   // testCountAccessedPages();
@@ -368,8 +406,32 @@ void AppMain() {
   // testCountDirtyPagesLamb();
 
   // Note looks like count valid PTEs works.
-  // UmPgTblMgmt::testCountValidPTEs();
+  // testCountValidPTEs();
   // testCountValidPTEsLamb();
+
+  // Get physical address for virt.
+  runHelloWorld();
+  lin_addr la; la.raw = 0xffffc00000000000;
+  printf("pPhys addr is %p\n",
+         UmPgTblMgmt::
+         getPhysAddrRecHelper(
+                              la,
+                              UmPgTblMgmt::getSlotPDPTRoot(),
+                              PDPT_LEVEL
+                              ).raw
+         );
+
+  // lin_addr root; root.raw = (uint64_t) UmPgTblMgmt::getSlotPDPTRoot();
+
+
+  printf("Phys addr is %p\n",
+         UmPgTblMgmt::getPhysAddrLamb(
+                                      la,
+                                      UmPgTblMgmt::getSlotPDPTRoot(),
+                                      // root,
+                                      PDPT_LEVEL
+                                      )
+         );
 
   // testMapping4K();
 
@@ -387,7 +449,7 @@ void AppMain() {
   // std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
   // UmPgTblMgmt::countValidPages(counts, root, PDPT_LEVEL);
   // printf("Non Lambda\n");
-  // printCounts(counts);
+
 
   // std::vector<uint64_t> counts2(5); // Vec of size 5, zero elements.
   // UmPgTblMgmt::countValidPagesLamb(counts2, root, PDPT_LEVEL);

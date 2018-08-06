@@ -40,13 +40,185 @@ UmPgTblMgmt::leafFn      nullLFn    = nullBRFn;
 UmPgTblMgmt::beforeRetFn nullBRetFn = nullBRFn;
 
 
+
+// NOTE: World of lambdas begins here.
+void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
+                                simple_pte *root, uint8_t lvl) {
+  // Counts number mapped pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    counts[lvl]++;
+  };
+  traverseValidPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgmt::countValidPTEsLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl) {
+  // Little bit of a HACK to put this in the predicate, but whatever.
+  auto pred = [&counts](simple_pte *curPte, uint8_t lvl) -> bool {
+    bool ret = exists(curPte);
+    if(ret){
+      counts[lvl]++;
+    }
+    return ret;
+  };
+  traversePageTable(root, lvl, pred, nullBRFn, nullARFn, nullLFn, nullBRetFn );
+}
+
+void UmPgTblMgmt::countAccessedPagesLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl) {
+  // Counts number mapped pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    counts[lvl]++;
+  };
+  traverseAccessedPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgmt::countDirtyPagesLamb(std::vector<uint64_t> &counts,
+                                     simple_pte *root, uint8_t lvl) {
+  // Counts number dirty pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+    if(isLeaf(curPte, lvl))
+      if(isDirty(curPte))
+      counts[lvl]++;
+  };
+  // NOTE: Trying walking accessed, not valid.
+  traverseAccessedPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
+  // Dummy example for how one might use the general traverser.
+  auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    return exists(curPte);
+  };
+  auto beforeRecursiveCall = [](simple_pte *curPte, uint8_t lvl) {
+    printf("Before Recursion\n");
+  };
+  auto afterRecursiveCall = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl) {
+    printf("After Recursion\n");
+  };
+  auto leaf = [](simple_pte *curPte, uint8_t lvl) {
+    printf("At leaf\n");
+  };
+  auto beforeReturn = [](simple_pte *root, uint8_t lvl) {
+    printf("About to return\n");
+  };
+
+  // TODO(tommyu): fn suffix.
+  traversePageTable(root, lvl,
+                    predicate,
+                    beforeRecursiveCall,
+                    afterRecursiveCall,
+                    leaf,
+                    beforeReturn
+                    );
+}
+
+void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
+  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    // exists() is redundant assuming non existant ptes are 0.
+    return exists(curPte) && isAccessed(curPte);
+  };
+
+  traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, nullBRetFn);
+}
+
+void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L) {
+  traverseValidPages(root, lvl, nullBRFn, nullARFn, L, nullBRetFn);
+}
+
+void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl,
+                                     beforeRecFn BR, afterRecFn AR, leafFn L, beforeRetFn BRET) {
+  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    return exists(curPte);
+  };
+  traversePageTable(root, lvl, pred, BR, AR, L, BRET);
+}
+
+// Continue predicate, before recursion, after recursion, leaf, before return.
+simple_pte *UmPgTblMgmt::traversePageTable(simple_pte *root, uint8_t lvl,
+                                           predicateFn P, beforeRecFn BR, afterRecFn AR,
+                                           leafFn L, beforeRetFn BRET) {
+  // A general page table traverser. Intention is not to call this directly
+  // from client code, but to make specializations, like a fn that only walks
+  // valid pages, accessed pages, dirty pages ...
+  for (int i = 0; i < 512; i++) { // Loop over all entries in table.
+    simple_pte *curPte = root + i;
+
+    if (!P(curPte, lvl)) // ! allows pred to stay in positive sense for caller.
+      continue;
+
+    if (isLeaf(curPte, lvl)) { // -> a physical page of some sz.
+      L(curPte, lvl);
+
+    } else { // This entry points to a sub page table.
+      BR(curPte, lvl);
+      simple_pte *childRoot = traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, BR, AR, L, BRET);
+      // NOTE: This guy takes an extra arg.
+      AR(childRoot, curPte, lvl);
+    }
+  }
+  // NOTE: This guy takes root, not curPte!
+  BRET(root, lvl);
+  return root;
+}
+
+#if 0
+simple_pte *UmPgTblMgmt::mapIntoPgTblLamb(simple_pte *root, lin_addr phys, lin_addr virt,
+                                          unsigned char mapLvl, unsigned char curLvl) {
+  auto f1 = [phys, virt, mapLvl](){
+    // No pg table here, need to allocate.
+    if (root == nullptr) {
+      // printf("Root doesn't exist! Allocate a table.\n");
+      auto page = ebbrt::page_allocator->Alloc();
+      kbugon(page == Pfn::None());
+      auto page_addr = page.ToAddr();
+      memset((void *)page_addr, 0, pgBytes[TBL_LEVEL]);
+      root = (simple_pte *)page_addr;
+    }
+  }
+}
+#endif
+
+lin_addr UmPgTblMgmt::getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned char lvl) {
+  lin_addr ret; ret.raw = 0;
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    lin_addr pa;
+    pa.raw = (uint64_t) nextTableOrFrame(curPte, 0, lvl);
+    pa.raw = injectOffset(virt, lvl);
+    return pa.raw;
+  };
+
+  ret.raw = walkPageTable(root, lvl, la, leafFn);
+  return ret;
+
+}
+
+uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
+                                     lin_addr virt, walkLeafFn L) {
+  // Given a virtual address, walk down to mapping level. Assume can be used,
+  // for example, by a mapper to inject an address at a given level, or by a
+  // query for the physical frame mapped by a particular address.
+
+  // Before doing anything, maybe nothing, maybe check if root is nullptr.
+
+  simple_pte *curPTE = root + virt[lvl];
+  // f1();
+
+  if(isLeaf(curPTE, lvl)){
+    return L(curPTE, virt, lvl);
+  }
+  // printf("We exist, but we're not a leaf, recurse!\n");
+  return walkPageTable(nextTableOrFrame(root, virt[lvl], lvl), lvl-1, virt, L);
+}
+
 // Printer helper.
-void alignToLvl(unsigned char lvl){
+void UmPgTblMgmt::alignToLvl(unsigned char lvl){
   for (int j = 0; j<4-lvl; j++) printf("\t");
 }
 
 void UmPgTblMgmt::reclaimAllPages(simple_pte *root, unsigned char lvl,
-                                      bool reclaimPhysical /*=true*/) {
+                                  bool reclaimPhysical /*=true*/) {
   // HACK(tommyu): Fails to remove top level table.
 
   // Loop over all entries in table.
@@ -131,7 +303,7 @@ void UmPgTblMgmt::dumpTableAddrs(simple_pte *root, unsigned char lvl){
 }
 
 void UmPgTblMgmt::countDirtyPagesHelper(std::vector<uint64_t> &counts,
-                                       simple_pte *root, uint8_t lvl) {
+                                        simple_pte *root, uint8_t lvl) {
   for (int i = 0; i < 512; i++) {
     if (!exists(root + i)) {
       continue;
@@ -162,7 +334,7 @@ void UmPgTblMgmt::countDirtyPages(std::vector<uint64_t> &counts, simple_pte *roo
 }
 
 void UmPgTblMgmt::countAccessedPagesHelper(std::vector<uint64_t> &counts,
-                                          simple_pte *root, uint8_t lvl) {
+                                           simple_pte *root, uint8_t lvl) {
   // Counts accessed leaf pages at various levels.
   for (int i = 0; i < 512; i++) {
     if (!exists(root + i))
@@ -188,123 +360,6 @@ void UmPgTblMgmt::countAccessedPages(std::vector<uint64_t> &counts, simple_pte *
   }
   kassert(counts.size() == 5);
   countAccessedPagesHelper(counts, root, lvl);
-}
-
-// NOTE: World of lambdas begins here.
-void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
-                                simple_pte *root, uint8_t lvl) {
-  // Counts number mapped pages.
-  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
-    counts[lvl]++;
-  };
-  traverseValidPages(root, lvl, leafFn);
-}
-
-void UmPgTblMgmt::countAccessedPagesLamb(std::vector<uint64_t> &counts,
-                                     simple_pte *root, uint8_t lvl) {
-  // Counts number mapped pages.
-  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
-    counts[lvl]++;
-  };
-  traverseAccessedPages(root, lvl, leafFn);
-}
-
-void UmPgTblMgmt::countDirtyPagesLamb(std::vector<uint64_t> &counts,
-                                     simple_pte *root, uint8_t lvl) {
-  // Counts number dirty pages.
-  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
-    if(isLeaf(curPte, lvl))
-      if(isDirty(curPte))
-      counts[lvl]++;
-  };
-  // NOTE: Trying walking accessed, not valid.
-  traverseAccessedPages(root, lvl, leafFn);
-}
-
-// void UmPgTblMgmt::countValidPTEsLamb(std::vector<uint64_t> &counts,
-//                                          simple_pte *root, uint8_t lvl) {
-  // Counts number mapped pages.
-  // #error
-//   traverseValidPages(root, lvl, leafFn);
-// }
-
-void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
-  // Dummy example for how one might use the general traverser.
-  auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {
-    return exists(curPte);
-  };
-  auto beforeRecursiveCall = [](simple_pte *curPte, uint8_t lvl) {
-    printf("Before Recursion\n");
-  };
-  auto afterRecursiveCall = [](simple_pte *childPte, simple_pte *curPte, uint8_t lvl) {
-    printf("After Recursion\n");
-  };
-  auto leaf = [](simple_pte *curPte, uint8_t lvl) {
-    printf("At leaf\n");
-  };
-  auto beforeReturn = [](simple_pte *root, uint8_t lvl) {
-    printf("About to return\n");
-  };
-
-  // TODO(tommyu): fn suffix.
-  traversePageTable(root, lvl,
-                    predicate,
-                    beforeRecursiveCall,
-                    afterRecursiveCall,
-                    leaf,
-                    beforeReturn
-                    );
-}
-
-
-void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
-  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
-    // exists() is redundant assuming non existant ptes are 0.
-    return exists(curPte) && isAccessed(curPte);
-  };
-
-  traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, nullBRetFn);
-}
-
-   void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L) {
-    traverseValidPages(root, lvl, nullBRFn, nullARFn, L, nullBRetFn);
-  }
-
-   void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl,
-                                 beforeRecFn BR, afterRecFn AR, leafFn L, beforeRetFn BRET) {
-    auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
-      return exists(curPte);
-    };
-    traversePageTable(root, lvl, pred, BR, AR, L, BRET);
-  }
-
-  // Continue predicate, pre recursion, leaf, before return.
-  // TODO(tommyu): Spell out full name.
-   simple_pte *UmPgTblMgmt::traversePageTable(simple_pte *root, uint8_t lvl,
-                                     predicateFn P, beforeRecFn BR, afterRecFn AR,
-                                     leafFn L, beforeRetFn BRET) {
-    // A general page table traverser. Intention is not to call this directly
-    // from client code, but to make specializations, like a fn that only walks
-    // valid pages, accessed pages, dirty pages ...
-    for (int i = 0; i < 512; i++) { // Loop over all entries in table.
-      simple_pte *curPte = root + i;
-
-      if (!P(curPte, lvl)) // ! allows pred to stay in positive sense for caller.
-        continue;
-
-      if (isLeaf(curPte, lvl)) { // -> a physical page of some sz.
-        L(curPte, lvl);
-
-      } else { // This entry points to a sub page table.
-        BR(curPte, lvl);
-        simple_pte *childRoot = traversePageTable(nextTableOrFrame(root, i, lvl), lvl - 1, P, BR, AR, L, BRET);
-        // NOTE: This guy takes an extra arg.
-        AR(childRoot, curPte, lvl);
-      }
-  }
-  // NOTE: This guy takes root, not curPte!
-  BRET(root, lvl);
-  return root;
 }
 
 void UmPgTblMgmt::countValidPTEsHelper(std::vector<uint64_t> &counts,
@@ -334,7 +389,7 @@ void UmPgTblMgmt::countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root
 }
 
 void UmPgTblMgmt::countValidPagesHelper(std::vector<uint64_t> &counts,
-                                       simple_pte *root, uint8_t lvl) {
+                                        simple_pte *root, uint8_t lvl) {
   // Counts valid leaf pages at various levels.
   for (int i = 0; i < 512; i++) {
     if (!exists(root + i))
@@ -360,6 +415,14 @@ void UmPgTblMgmt::countValidPages(std::vector<uint64_t> &counts, simple_pte *roo
   countValidPagesHelper(counts, root, lvl);
 }
 
+uintptr_t UmPgTblMgmt::injectOffset(lin_addr la, unsigned char lvl){
+  lin_addr pa;
+  switch (lvl) {
+  case PDPT_LEVEL: pa.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
+  case DIR_LEVEL: pa.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
+  case TBL_LEVEL: pa.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
+  return pa.raw;
+}
 
 lin_addr UmPgTblMgmt::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsigned char lvl) {
   printf("la is %#0lx, offset is %lu, root is %p, lvl is %u\n", la.raw, la[lvl], root, lvl);
@@ -372,13 +435,11 @@ lin_addr UmPgTblMgmt::getPhysAddrRecHelper(lin_addr la, simple_pte* root, unsign
   if (isLeaf(root + la[lvl], lvl)) {
     lin_addr pa;
     printf("This guy is a leaf! Follow final table inderection & Return the addr \n");
-    root = nextTableOrFrame(root, la[lvl], lvl);
-    pa.raw = (uint64_t)root;
-    switch (lvl) {
-    case PDPT_LEVEL: pa.construct_addr_1G.OFFSET = la.decomp1G.PGOFFSET; break;
-    case DIR_LEVEL: pa.construct_addr_2M.OFFSET = la.decomp2M.PGOFFSET; break;
-    case TBL_LEVEL: pa.construct_addr_4K.OFFSET = la.decomp4K.PGOFFSET;}
-    printf("bout to return helper\n");
+    // TODO: Should this really be modifying root?
+    // root = nextTableOrFrame(root, la[lvl], lvl);
+    // pa.raw = (uint64_t)root;
+    pa.raw = (uint64_t) nextTableOrFrame(root, la[lvl], lvl);
+    pa.raw = injectOffset(la, lvl);
     return pa;
   }
 
@@ -708,16 +769,16 @@ void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
 }
 
 simple_pte *UmPgTblMgmt::mapIntoPgTbl(simple_pte *root, lin_addr phys,
-                                           lin_addr virt, unsigned char rootLvl,
-                                           unsigned char mapLvl,
-                                           unsigned char curLvl) {
+                                      lin_addr virt, unsigned char rootLvl,
+                                      unsigned char mapLvl,
+                                      unsigned char curLvl) {
   return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl);
 }
 
 simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
-                                     lin_addr virt, unsigned char rootLvl,
-                                     unsigned char mapLvl,
-                                     unsigned char curLvl) {
+                                            lin_addr virt, unsigned char rootLvl,
+                                            unsigned char mapLvl,
+                                            unsigned char curLvl) {
   kassert(rootLvl >= mapLvl);
   kassert(rootLvl >= curLvl);
   kassert(rootLvl <= PML4_LEVEL && rootLvl >= TBL_LEVEL);
@@ -725,7 +786,6 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
 
   // No pg table here, need to allocate.
   if (root == nullptr) {
-    // printf("Root doesn't exist! Allocate a table.\n");
     auto page = ebbrt::page_allocator->Alloc();
     kbugon(page == Pfn::None());
     auto page_addr = page.ToAddr();
@@ -738,18 +798,13 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   // Gotta do a mapping
   if (curLvl == mapLvl) {
     // We're in the table, modify the entry.
-    // printf("At the mapping level, %u, addr is %lx \n", curLvl, phys.raw);
     pte_ptr->tableOrFramePtrToPte((simple_pte *)phys.raw);
   } else {
     if (exists(pte_ptr)) {
-      // printf("This entry exists and points to an allocated table.\n");
-      // printf("Follow it to next table.");
       mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1);
     } else {
-      // Need to create new table & point to it.
-      // printf(RED "Mapping not established, create table.\n" RESET);
       simple_pte *ret =
-          mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1);
+        mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1);
       pte_ptr->tableOrFramePtrToPte(ret);
     }
   }

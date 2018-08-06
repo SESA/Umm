@@ -144,8 +144,8 @@ public:
 public:
   uint16_t operator[](uint8_t idx);
 private:
-  lin_addr getPhysAddrRec(simple_pte* root = nullptr, unsigned char lvl = 4);
-  lin_addr getPhysAddrRecHelper(simple_pte* root, unsigned char lvl);
+  // lin_addr getPhysAddrRec(simple_pte* root = nullptr, unsigned char lvl = 4);
+  // lin_addr getPhysAddrRecHelper(simple_pte* root, unsigned char lvl);
 };
 static_assert(sizeof(lin_addr) == sizeof(uint64_t), "Bad lin_addr SZ");
 
@@ -167,6 +167,7 @@ namespace UmPgTblMgmt {
   void countValidPTEs(std::vector<uint64_t> &counts, simple_pte *root = nullptr, uint8_t lvl = PML4_LEVEL);
 
   void traverseValidPages(simple_pte *root, uint8_t lvl);
+  uintptr_t injectOffset(lin_addr la, unsigned char lvl);
 
   // Copiers
   simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
@@ -192,10 +193,12 @@ namespace UmPgTblMgmt {
   // TODO(tommyu): Fix these names.
   void dumpTableAddrs(simple_pte *root, unsigned char lvl);
   void dumpFullTableAddrs(simple_pte *root, unsigned char lvl);
+  void alignToLvl(unsigned char lvl);
 
   // NOTE: World of lambdas begins here.
 
-  // Predicate, determines wether to follow this entyr.
+  // Used in traversePageTable.
+  // Predicate, determines whether to follow this entry.
   typedef std::function<bool(simple_pte *curPte, uint8_t lvl)> predicateFn;
   // Work to run before recursive call. TODO: is this necessary?
   typedef std::function<void(simple_pte *curPte, uint8_t lvl)> beforeRecFn;
@@ -206,31 +209,42 @@ namespace UmPgTblMgmt {
   // Work to run before returning to parent page table.
   typedef beforeRecFn beforeRetFn;
 
-   void printTraversalLamb(simple_pte *root, uint8_t lvl);
+  // Used in walkPageTable.
+  typedef std::function<uintptr_t(simple_pte *curPte, lin_addr virt, uint8_t lvl)> walkLeafFn;
 
-   void countValidPagesLamb(std::vector<uint64_t> &counts,
-                                  simple_pte *root, uint8_t lvl);
+  lin_addr getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned char lvl);
 
-   void countAccessedPagesLamb(std::vector<uint64_t> &counts,
-                                     simple_pte *root, uint8_t lvl);
+  void printTraversalLamb(simple_pte *root, uint8_t lvl);
 
-   void countDirtyPagesLamb(std::vector<uint64_t> &counts,
-                                  simple_pte *root, uint8_t lvl);
+  void countValidPagesLamb(std::vector<uint64_t> &counts,
+                            simple_pte *root, uint8_t lvl);
+  void countValidPTEsLamb(std::vector<uint64_t> &counts,
+                          simple_pte *root, uint8_t lvl);
 
-   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
+  void countAccessedPagesLamb(std::vector<uint64_t> &counts,
+                              simple_pte *root, uint8_t lvl);
 
-   void traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L);
+  void countDirtyPagesLamb(std::vector<uint64_t> &counts,
+                           simple_pte *root, uint8_t lvl);
 
-   void traverseValidPages(simple_pte *root, uint8_t lvl, beforeRecFn BR,
-                                 afterRecFn AR, leafFn L, beforeRetFn BRET);
+  void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
 
-   simple_pte *traversePageTable(simple_pte *root, uint8_t lvl,
-                                       predicateFn P, beforeRecFn BR,
-                                       afterRecFn AR, leafFn L,
-                                       beforeRetFn BRET);
+  void traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L);
 
+  void traverseValidPages(simple_pte *root, uint8_t lvl, beforeRecFn BR,
+                          afterRecFn AR, leafFn L, beforeRetFn BRET);
 
-   bool exists (simple_pte *pte);
+  simple_pte *traversePageTable(simple_pte *root, uint8_t lvl,
+                                predicateFn P, beforeRecFn BR,
+                                afterRecFn AR, leafFn L,
+                                beforeRetFn BRET);
+
+  uintptr_t walkPageTable(simple_pte *root, uint8_t lvl, lin_addr virt, walkLeafFn L);
+
+  simple_pte *mapIntoPgTblLamb(simple_pte *root, lin_addr phys,
+                               lin_addr virt, unsigned char rootLvl,
+                               unsigned char mapLvl, unsigned char curLvl);
+
 
   // namespace {
 
@@ -263,6 +277,7 @@ namespace UmPgTblMgmt {
                                               uint64_t *idx);
 
    lin_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
+  bool exists (simple_pte *pte);
    bool isLeaf     (simple_pte *pte, unsigned char lvl);
    bool isAccessed (simple_pte *pte);
    bool isDirty    (simple_pte *pte);
