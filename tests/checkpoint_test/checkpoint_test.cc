@@ -19,7 +19,9 @@ void AppMain() {
   umm::manager->Load(std::move(umi));
 
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
-      umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
+                                                                umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+  // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
+  // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
   umm::manager->Start();
 
