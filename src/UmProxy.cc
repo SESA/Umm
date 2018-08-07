@@ -30,6 +30,24 @@ umm::LoopbackDriver::LoopbackDriver()
       std::unique_ptr<ebbrt::NetworkManager::Interface::ItfAddress>(addr));
 }
 
+
+void umm::UmProxy::TcpSession::Connected(){
+  ebbrt::kprintf_force("UmProxy connected (core %d)\n", core_);
+}
+
+void umm::UmProxy::TcpSession::Receive(std::unique_ptr<ebbrt::MutIOBuf> b) {
+  ebbrt::kprintf_force("UmProxy received data (core %d): len=%d\n", core_, b->ComputeChainDataLength());
+}
+
+umm::UmProxy::TcpSession* umm::UmProxy::Connect(uint16_t port){
+  ebbrt::NetworkManager::TcpPcb pcb;
+  std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
+  pcb.Connect(ebbrt::Ipv4Address(umip), port);
+  auto session = new TcpSession(std::move(pcb));
+  session->Install();
+  return session;
+}
+
 uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   kassert(len > sizeof(ebbrt::EthernetHeader));
   auto eth = (ebbrt::EthernetHeader *)(data);
