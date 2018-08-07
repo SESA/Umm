@@ -14,14 +14,10 @@
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
+// HACK(jmcadden): A const string in a header is a pretty bad way to specify boot arguments :( 
+const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/tcp_test.js",
+ "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
 // const std::string opts_ = "";
-// const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js"})";
-// const std::string opts_ = R"({"cmdline":"bin/node-default",
-// "net":{"if":"ukvmif0","cloner":"True","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
-// const std::string opts_ = R"({"cmdline":"bin/node-default",
-// "blk":{"source":"etfs","path":"/ld0a","fstype":"blk","mountpoint":"/data"}})";
-const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
- "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
 
 #define SOLO5_USR_REGION_SIZE 1 << 28
 #define SOLO5_CPU_TSC_FREQ 2599997000
@@ -35,7 +31,7 @@ static int solo5_hypercall_poll(volatile void *arg) {
   arg_->ret = 0;
   umm::manager->Block(arg_->timeout_nsecs);
   // return from block
-  if(umm::proxy->BytesAvailable()){
+  if(umm::proxy->UmHasData()){
     arg_->ret = 1;
   }
   return 0;
@@ -43,7 +39,7 @@ static int solo5_hypercall_poll(volatile void *arg) {
 
 static int solo5_hypercall_netinfo(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netinfo *)arg;
-  auto ma = umm::proxy->MacAddress();
+  auto ma = umm::proxy->UmMac();
   arg_->mac_address[0] = ma[0];
   arg_->mac_address[1] = ma[1];
   arg_->mac_address[2] = ma[2];
@@ -64,7 +60,7 @@ struct ukvm_netwrite {
 }; */
 static int solo5_hypercall_netwrite(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netwrite *)arg;
-  arg_->ret = umm::proxy->NetWrite(arg_->data, arg_->len);
+  arg_->ret = umm::proxy->UmWrite(arg_->data, arg_->len);
   return 0;
 }
 
@@ -81,7 +77,7 @@ struct ukvm_netread {
 }; */
 static int solo5_hypercall_netread(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netread *)arg;
-  arg_->len = umm::proxy->NetRead(arg_->data, arg_->len);
+  arg_->len = umm::proxy->UmRead(arg_->data, arg_->len);
   // ret is 0 on successful read, 1 otherwise
   arg_->ret = (arg_->len > 0) ? 0 : 1;
   return 0;
