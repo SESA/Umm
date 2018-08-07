@@ -26,7 +26,7 @@ EBBRTCXX=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-g++
 EBBRTAR=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-ar
 
 # Umm
-UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP 
+UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP --sysroot=$(EBBRT_SYSROOT)
 ifdef DEBUG  #e.g., $ make DEBUG=1
 UMM_CPP_FLAGS += -O0 -g3
 endif
