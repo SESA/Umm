@@ -35,28 +35,37 @@ void umm::UmManager::Init() {
 }
 
 void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
-  if (status() == running) {
+  auto stat = status();
+  if (stat == running) {
     // If the instance is running this exception is treated as an exit to
     // restore context of the client who called Start()
     *ef = caller_restore_frame_;
     set_status(finished);
     // TODO(tommyu): else if status() = loaded
-  } else {
+
+  } else if (stat == kickoff) {
+    printf("kickoff -> running \n");
+
     // If this context is not already running we treat this entry an jump into
     // the instance. Backup the restore_frame (context) of the client and modify
     // the existing frame to "return" back into the instance
     caller_restore_frame_ = *ef;
+
     ef->rip = umi_->sv_.ef.rip;
     ef->rdi = umi_->sv_.ef.rdi;
     ef->rsi = umi_->sv_.ef.rsi;
 
-    // TODO(us): Confirm what's going on here.
-    if( umi_->sv_.ef.rbp )
-      ef->rbp = umi_->sv_.ef.rbp;
-    if( umi_->sv_.ef.rsp )
-      ef->rsp = umi_->sv_.ef.rsp;
-
     set_status(running);
+
+  } else if (stat == loaded) {
+    printf("Loaded -> running \n");
+    caller_restore_frame_ = *ef;
+    *ef = umi_->sv_.ef;
+    set_status(running);
+
+  } else {
+    printf("Trying to resume in an invalid state\n");
+    kabort();
   }
 }
 
@@ -71,8 +80,12 @@ void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
     if (s_ != empty) // Only load when empty
       break;
     goto OK;
+  case kickoff:
+    if (s_ != loaded) // Only kickoff from loaded.
+      break;
+    goto OK;
   case running:
-    if (s_ != loaded && s_ != snapshot && s_ != blocked) 
+    if (s_ != loaded && s_ != snapshot && s_ != blocked && s_ != kickoff)
       break;
     clock_ = ebbrt::clock::Wall::Now(); 
     goto OK;
@@ -223,8 +236,19 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
 
 void umm::UmManager::Start() { 
   if (status() == loaded)
+    kprintf_force(GREEN "\nUmm... Starting the instance on core #%d\n" RESET,
+                  (size_t)ebbrt::Cpu::GetMine());
+  trigger_entry_exception();
+  kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine(), status_.time());
+  //umi_->Print();
+}
+
+void umm::UmManager::Kickoff() { 
+  if (status() == loaded)
     kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
                   (size_t)ebbrt::Cpu::GetMine());
+  set_status(kickoff);
   trigger_entry_exception();
   kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());

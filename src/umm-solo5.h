@@ -14,14 +14,14 @@
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
-const std::string opts_ = "";
+// const std::string opts_ = "";
 // const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js"})";
 // const std::string opts_ = R"({"cmdline":"bin/node-default",
 // "net":{"if":"ukvmif0","cloner":"True","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
 // const std::string opts_ = R"({"cmdline":"bin/node-default",
 // "blk":{"source":"etfs","path":"/ld0a","fstype":"blk","mountpoint":"/data"}})";
-// const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
- // "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
+const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
+ "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"10.0.0.2","mask":"16"}})";
 
 #define SOLO5_USR_REGION_SIZE 1 << 28
 #define SOLO5_CPU_TSC_FREQ 2599997000

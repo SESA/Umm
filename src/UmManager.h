@@ -35,7 +35,7 @@ class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Ho
 public:
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
-  enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
+  enum Status : uint8_t { empty = 0, loaded, kickoff, running, snapshot, blocked, finished };
 
   /** Timer event handler */
   void Fire() override;
@@ -52,6 +52,8 @@ public:
 
   /** Start execution of loaded instance */
   void Start(); // TODO(jmcadden): Rename as Enter?
+  /* Redundancy here. */
+  void Kickoff(); // TODO(jmcadden): Rename as Enter?
 
   /** Extract an SV at a given symbol */
   ebbrt::Future<UmSV> SetCheckpoint(uintptr_t vaddr);

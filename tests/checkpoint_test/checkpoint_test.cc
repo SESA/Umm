@@ -23,7 +23,8 @@ void AppMain() {
   // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
   // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
-  umm::manager->Start();
+  // NOTE: Using kickoff here, start on other core.
+  umm::manager->Kickoff();
 
   snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
       umm::UmSV snap = snap_f.Block().Get();
