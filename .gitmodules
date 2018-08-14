@@ -13,5 +13,6 @@
 	ignore = dirty
 [submodule "ext/incubator-openwhisk-runtime-nodejs"]
 	path = ext/incubator-openwhisk-runtime-nodejs
-	url = https://github.com/apache/incubator-openwhisk-runtime-nodejs
+	url = https://github.com/jmcadden/incubator-openwhisk-runtime-nodejs 
+	branch = seuss
 	ignore = dirty
