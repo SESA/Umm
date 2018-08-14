@@ -46,24 +46,6 @@ private:
  */
 class UmProxy : public ebbrt::MulticoreEbb<UmProxy, LoopbackDriver> {
 public:
-	/** TcpSession handler
-	 * 	Manages a TCP connection between the Um instance and the UmProxy
-	 */
-  class TcpSession : public ebbrt::TcpHandler {
-  public:
-    TcpSession(ebbrt::NetworkManager::TcpPcb pcb)
-        : ebbrt::TcpHandler(std::move(pcb)), core_(ebbrt::Cpu::GetMine()) {
-      ebbrt::kprintf_force("UmProxy starting TCP connection (core %d)", core_);
-    }
-    void Close() { ebbrt::kprintf_force("UmProxy TCP connection closed (core %d)\n", core_); }
-    void Connected() override;
-    void Abort() { ebbrt::kprintf_force("UmProxy TCP connection aborted (core %d)\n", core_); }
-    void Receive(std::unique_ptr<ebbrt::MutIOBuf> b);
-  private:
-		// TODO(jmcadden): received data buffer 
-		const size_t core_;
-  }; // end TcpSession
-
   /** Class-wide UmProxy state & initialization */
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmProxy");
   static void Init();
@@ -79,7 +61,9 @@ public:
    */
   uint32_t UmWrite(const void *data, const size_t len);
 
-  /**  UmRead - Incoming data read to UM instance */
+  /** UmRead - Incoming data read to UM instance 
+   *  returns the amount of data read
+   */
   uint32_t UmRead(void *data, const size_t len);
 
   /**	UmHasData - Returns 'true' if there is data to be read */
@@ -87,9 +71,6 @@ public:
 
   /** Receive data from the ebbrt network stack */
   void Receive(std::unique_ptr<ebbrt::IOBuf> buf, ebbrt::PacketInfo pinfo);
-
-  /** Connect - TCP connection to the Um instance */
-	TcpSession* Connect(uint16_t port=8080); 
 
 private:
   std::queue<std::unique_ptr<ebbrt::IOBuf>> um_recv_queue_;
