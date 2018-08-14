@@ -31,23 +31,6 @@ umm::LoopbackDriver::LoopbackDriver()
 }
 
 
-void umm::UmProxy::TcpSession::Connected(){
-  ebbrt::kprintf_force("UmProxy connected (core %d)\n", core_);
-}
-
-void umm::UmProxy::TcpSession::Receive(std::unique_ptr<ebbrt::MutIOBuf> b) {
-  ebbrt::kprintf_force("UmProxy received data (core %d): len=%d\n", core_, b->ComputeChainDataLength());
-}
-
-umm::UmProxy::TcpSession* umm::UmProxy::Connect(uint16_t port){
-  ebbrt::NetworkManager::TcpPcb pcb;
-  std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
-  pcb.Connect(ebbrt::Ipv4Address(umip), port);
-  auto session = new TcpSession(std::move(pcb));
-  session->Install();
-  return session;
-}
-
 uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   kassert(len > sizeof(ebbrt::EthernetHeader));
   auto eth = (ebbrt::EthernetHeader *)(data);
@@ -68,10 +51,10 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
   /// DEBUG OUTPUT
-  /// ebbrt::kprintf_force("LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-  ///                  buf->ComputeChainDataLength(),
-  ///                  buf->CountChainElements());
-  /// umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  // ebbrt::kprintf_force("LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+  //                  buf->ComputeChainDataLength(),
+  //                  buf->CountChainElements());
+  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
 
   // TODO(jmcadden): Send buffer out asynchronously
   // ebbrt::event_manager->SpawnLocal([ this, buf = std::move(buf) ]() { });
@@ -87,10 +70,10 @@ uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
   auto buf = std::move(um_recv_queue_.front());
   um_recv_queue_.pop();
   auto in_len = buf->ComputeChainDataLength();
+  // Assert we are not trying to send more than can be read
   kassert(len >= in_len);
   auto dp = buf->GetDataPointer();
   dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
-  memcpy(data, (void *)buf->Data(), in_len);
   return in_len;
 }
 
@@ -128,10 +111,11 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   } // end if kNeedsCsum
 
   /// DEBUG OUTPUT
-  /// ebbrt::kprintf_force("LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
-  ///                     buf->ComputeChainDataLength(),
-  ///                     buf->CountChainElements());
-  /// umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  //ebbrt::kprintf_force("LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+  //                     buf->ComputeChainDataLength(),
+  //                     buf->CountChainElements());
+  //umm::UmProxy::DebugPrint(buf->GetDataPointer());
+
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
 }
 
