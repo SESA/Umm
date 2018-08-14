@@ -15,7 +15,7 @@
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
 // HACK(jmcadden): A const string in a header is a pretty bad way to specify boot arguments :( 
-const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/tcp_test.js",
+const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
  "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
 // const std::string opts_ = "";
 
