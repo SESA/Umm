@@ -51,7 +51,9 @@ public:
   void Load(std::unique_ptr<UmInstance>);
 
   /** Start execution of loaded instance */
-  void Start(); // TODO(jmcadden): Rename as Enter?
+  void deploySnap(); // TODO(jmcadden): Rename as Enter?
+  // Exit point called by solo5 hypercall.
+  void Halt();
   /* Redundancy here. */
   void Kickoff(); // TODO(jmcadden): Rename as Enter?
 
@@ -92,7 +94,7 @@ private:
   }; // UmmStatus
 
   /* Internals */
-  void trigger_entry_exception() { __asm__ __volatile__("int3"); };
+  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
   inline bool valid_address(uintptr_t vaddr) {
     return ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
   }
@@ -109,9 +111,11 @@ private:
   std::unique_ptr<UmInstance> umi_;
   // TODO: Reusables or multi-promises 
   ebbrt::Promise<UmSV> umi_snapshot_;
+
 private:
-  void setSlotPDPTRoot(simple_pte* newRoot);
+  simple_pte *getSlotPML4PTE();
   simple_pte* getSlotPDPTRoot();
+  void setSlotPDPTRoot(simple_pte* newRoot);
 };
 
 constexpr auto manager = 
