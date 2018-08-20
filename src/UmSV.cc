@@ -2,22 +2,6 @@
 #include "UmRegion.h"
 
 namespace umm{
-// UmSV::UmSV(const UmSV &other) {
-//   kprintf("SV copy constructor\n");
-//   *this = other;
-// }
-
-// UmSV &UmSV::operator=(const UmSV &rhs) {
-//   // Assignment operator.
-//   // Simple copy
-//   this->ef = rhs.ef;
-//   // Call assignment operator.
-//   this->pth = rhs.pth;
-
-//   kprintf("Region list copy nyi\n");
-
-//   return *this;
-// }
 
 void UmSV::SetEntry(uintptr_t paddr) { ef.rip = paddr; }
   void UmSV::AddRegion(Region &reg) { region_list_.push_back(reg); }
@@ -48,7 +32,24 @@ UmSV::GetRegionByName(const char* p){
   kabort();
 }
 
+} // namespace umm
 
+  // UmSV::UmSV(const UmSV &other) {
+  //   kprintf("SV copy constructor\n");
+  //   *this = other;
+  // }
+
+  // UmSV &UmSV::operator=(const UmSV &rhs) {
+  //   // Assignment operator.
+  //   // Simple copy
+  //   this->ef = rhs.ef;
+  //   // Call assignment operator.
+  //   this->pth = rhs.pth;
+
+  //   kprintf("Region list copy nyi\n");
+
+  //   return *this;
+  // }
 // bool UmSV::operator==(const UmSV& rhs) {
 //   if (this->region_list_.size() != rhs.region_list_.size())
 //     return false;
@@ -108,4 +109,3 @@ UmSV::GetRegionByName(const char* p){
 //   // make exact copy of rl...
 // }
 
-} // namespace umm
