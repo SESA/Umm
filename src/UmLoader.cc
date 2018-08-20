@@ -4,6 +4,7 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "UmLoader.h"
+#include "UmRegion.h"
 
 // Symbol table
 umm::ElfLoader::Elf64_Sym const *elf_symtab = nullptr; 
@@ -31,8 +32,8 @@ uintptr_t umm::ElfLoader::GetSymbolAddress(const char *sym) {
   return 0;
 }
 
-std::unique_ptr<umm::UmInstance>
-umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
+umm::UmSV
+umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
 
   // Get location of elf header from input binary blob
   auto eh = (const umm::ElfLoader::Ehdr *)elf_start;
@@ -87,7 +88,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
     kprintf("Checking section : %s\n", get_section_name(eh, sh));
 
     // New Region structure
-    auto reg = UmSV::Region();
+    umm::Region reg = Region();
     reg.start = sh->sh_addr;
     reg.length = sh->sh_size;
     reg.name = std::string(get_section_name(eh, sh));
@@ -125,7 +126,7 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
     if (reg.name == ".bss") {
       next_page_ptr = ebbrt::Pfn::Up(reg.start + reg.length).ToAddr();
     }
-    
+
     ret_state.AddRegion(reg);
   } // end Elf Section loop
 
@@ -136,18 +137,12 @@ umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
   size_t usr_len =
       (kSlotEndVAddr + 1) - next_page_ptr; // Dedicate all remaining memory
 
-  auto usr_reg = UmSV::Region();
+  auto usr_reg = Region();
   usr_reg.start = next_page_ptr;
   usr_reg.length = usr_len; 
   usr_reg.name = std::string("usr");
   usr_reg.writable = true;
   ret_state.AddRegion(usr_reg);
 
-  // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(next_page_ptr, SOLO5_USR_REGION_SIZE);
-
-  // Create the Um Instance and set boot configuration
-  auto umi = std::make_unique<UmInstance>(ret_state);
-  umi->SetArguments(argc);
-  return std::move(umi);
+  return ret_state;
 }
