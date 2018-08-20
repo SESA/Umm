@@ -21,12 +21,13 @@ namespace umm {
     /* Transient state */                       // XXX: Clear on copy?
     size_t count = 0;                           /** Page faults on region */
 
-    // Region();
-    // Region(const Region &other);
-    // Region operator=(const Region &other);
     bool AddrIsInRegion(uintptr_t vaddr);
     size_t GetOffset(uintptr_t vaddr);
     void Print();
+
+    // Region();
+    // Region(const Region &other);
+    // Region operator=(const Region &other);
     // Region();
     // Region(std::string name_, uintptr_t start_, size_t length_, bool writable_, unsigned char *data_) :
     //   name wh

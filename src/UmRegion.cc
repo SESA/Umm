@@ -1,39 +1,6 @@
 #include "UmRegion.h"
 namespace umm{
 
-// Region::Region() {
-//   kprintf("Region constructor\n");
-// }
-
-// Region::Region(const Region &other) {
-//   kprintf("Region copy constructor\n");
-//   *this = other;
-// }
-
-// Region& Region::operator=(const Region& rhs) {
-//   this->name = rhs.name;
-//   this->start = rhs.start;
-//   this->length = rhs.length;
-//   this->writable = rhs.writable;
-//   this->page_order = rhs.page_order;
-//   kprintf("NYI deep copy reg.\n");
-//   return *this;
-// }
-
-// umm::Region::Region(const umm::Region &other){
-//   kprintf("Copy constructor \n");
-//   *this = other;
-//   // Don't pick up other region's data pointer.
-//   this->data = 0;
-// }
-
-// umm::Region umm::Region::operator=(const umm::Region &other){
-// }
-
-// umm::Region::Region(){
-//   kprintf("Constructor \n");
-// }
-
 bool Region::AddrIsInRegion(uintptr_t vaddr) {
   return (vaddr >= start && vaddr < start + length);
 }
@@ -54,6 +21,40 @@ void Region::Print() {
   kprintf_force("page faults: %d\n", count);
   kprintf_force("       data: %llu\n", data);
 }
+} // namespace umm
+
+  // Region::Region() {
+  //   kprintf("Region constructor\n");
+  // }
+
+  // Region::Region(const Region &other) {
+  //   kprintf("Region copy constructor\n");
+  //   *this = other;
+  // }
+
+  // Region& Region::operator=(const Region& rhs) {
+  //   this->name = rhs.name;
+  //   this->start = rhs.start;
+  //   this->length = rhs.length;
+  //   this->writable = rhs.writable;
+  //   this->page_order = rhs.page_order;
+  //   kprintf("NYI deep copy reg.\n");
+  //   return *this;
+  // }
+
+  // umm::Region::Region(const umm::Region &other){
+  //   kprintf("Copy constructor \n");
+  //   *this = other;
+  //   // Don't pick up other region's data pointer.
+  //   this->data = 0;
+  // }
+
+  // umm::Region umm::Region::operator=(const umm::Region &other){
+  // }
+
+  // umm::Region::Region(){
+  //   kprintf("Constructor \n");
+  // }
 
 // bool umm::Region::equal_metadata(const Region& rhs) const {
 //   // Can't use default comparitor because of data*.
@@ -101,4 +102,3 @@ void Region::Print() {
 //   }
 //   return true;
 // }
-} // namespace umm
