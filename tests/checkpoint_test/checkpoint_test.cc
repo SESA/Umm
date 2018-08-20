@@ -9,13 +9,25 @@
 
 #include <Umm.h>
 
-void AppMain() {
+std::unique_ptr<umm::UmInstance> initInstance(){
+  // Create sv.
+  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
-  // Initialize the UmManager
-  umm::UmManager::Init();
+  // Create instance.
+  auto umi = std::make_unique<umm::UmInstance>(sv);
 
-  // Generated UM Instance from the linked in Elf 
-  auto umi = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
+  // Configure solo5 boot arguments
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  umi->SetArguments(argc);
+
+  return std::move(umi);
+}
+
+void twoCoreTest(){
+  // Create instance.
+  auto umi = initInstance();
+
+  // Generated UM Instance from the linked in Elf
   umm::manager->Load(std::move(umi));
 
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
@@ -29,14 +41,46 @@ void AppMain() {
   snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
       umm::UmSV snap = snap_f.Block().Get();
       // Deploy this snapshot on next core
-      size_t core = ebbrt::Cpu::GetMine() + 1;
       ebbrt::event_manager->SpawnRemote(
           [snap]() {
             auto umi = std::make_unique<umm::UmInstance>(snap);
             umm::manager->Load(std::move(umi));
-            umm::manager->Start();
+            umm::manager->deploySnap();
           },
-          core);
+          ebbrt::Cpu::GetMine() + 1);
   }); // End snap_f.Then(...)
   kprintf("App... Returned from initial execution\n");
+
+}
+
+void singleCoreTest(){
+  // Create instance.
+  auto umi = initInstance();
+
+  // Get snap future.
+  auto snap_f = umm::manager->SetCheckpoint(
+                                            umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+
+  // Generated UM Instance from the linked in Elf
+  umm::manager->Load(std::move(umi));
+  // NOTE: Using kickoff here, start on other core.
+  umm::manager->Kickoff();
+  umm::manager->Unload();
+
+  umm::UmSV snap = snap_f.Get();
+  auto umi2 = std::make_unique<umm::UmInstance>(snap);
+  umm::manager->Load(std::move(umi2));
+  umm::manager->deploySnap();
+  umm::manager->Unload();
+}
+
+void AppMain() {
+
+  // Initialize the UmManager
+  umm::UmManager::Init();
+  twoCoreTest();
+  // singleCoreTest();
+
+  // ebbrt::acpi::PowerOff();
+
 }
