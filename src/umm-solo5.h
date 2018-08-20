@@ -91,7 +91,7 @@ static int solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
   (void)arg_;
   kprintf("\nHalting Solo5. Goodbye!\n");
-  umm::manager->Start();
+  umm::manager->Halt();
   return 0;
 }
 
