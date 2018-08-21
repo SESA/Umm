@@ -83,12 +83,7 @@ void loadFromSnapTest(int numRuns){
   for(int i = 1; i < numRuns; i++){
     printf(RED "\n\n***** Deploying snapshot %d\n" RESET, i);
 
-    // kprintf("");
-
-    kprintf("Use snap to create instance, this does the page table copy. \n");
     auto umi2 = std::make_unique<umm::UmInstance>(snap);
-    kprintf("End\n");
-    // int db = 1; while(db);
     umm::manager->Load(std::move(umi2));
     umm::manager->runSV();
     umm::manager->Unload();
@@ -103,6 +98,6 @@ void AppMain() {
 
   // loadFromElfTest(1);
   // loadFromSVTest(2);
-  loadFromSnapTest(3);
+  loadFromSnapTest(5);
 
 }
