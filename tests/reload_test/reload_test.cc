@@ -54,7 +54,7 @@ void loadFromSVTest(int numRuns){
   }
 }
 
-void loadFromSnapTest(int numRuns){
+const umm::UmSV getSnap(){
   auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
   // Create the Um Instance and set boot configuration
@@ -77,7 +77,11 @@ void loadFromSnapTest(int numRuns){
 
   // assuming this doesn't change. add const.
   kprintf("Grabbing snapshot from future\n");
-  const umm::UmSV snap = snap_f.Get();
+  return snap_f.Get();
+}
+
+void loadFromSnapTest(int numRuns){
+  auto snap = getSnap();
 
   // NOTE: Starts at 1 unlike others.
   for(int i = 1; i < numRuns; i++){
@@ -93,11 +97,8 @@ void loadFromSnapTest(int numRuns){
 void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
-
-
-
   // loadFromElfTest(1);
   // loadFromSVTest(2);
-  loadFromSnapTest(5);
+  loadFromSnapTest(1<<12);
 
 }
