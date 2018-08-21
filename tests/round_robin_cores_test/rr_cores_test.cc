@@ -33,7 +33,7 @@
 //   }
 // }
 
-const umm::UmSV getSnap(){
+umm::UmSV getSnap(){
   auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
   // Create the Um Instance and set boot configuration
@@ -58,6 +58,7 @@ const umm::UmSV getSnap(){
   kprintf("Grabbing snapshot from future\n");
   return snap_f.Get();
 }
+
 
 void reloadSingleCore(int numRuns) {
   // Idea, take one snap, deploy on many cores.
@@ -86,26 +87,27 @@ void doWork(const umm::UmSV &snap){
 }
 
 void rrCores(int numRounds, int numRuns){
-
     size_t my_cpu = ebbrt::Cpu::GetMine();
     size_t num_cpus = ebbrt::Cpu::Count();
 
+    // Heap allocate an sv.
+    umm::UmSV *snap_ptr = new umm::UmSV();
     // Get that sweet snapshot.
-    auto snap = getSnap();
+    *snap_ptr = getSnap();
+
     for (size_t i = my_cpu; i < num_cpus * numRounds; i++) {
       ebbrt::event_manager->SpawnRemote(
           // Get snap by ref, we'll copy in the instance constructor.
-          [i, snap, numRuns]() {
+          [i, snap_ptr, numRuns]() {
             // Stagger running to keep output readable.
             uint64_t sleep = (1ULL << 30) * i;
-            while (sleep--)
-              ;
+            while (sleep--);
 
             for (int j = 0; j < numRuns; j++) {
               kprintf(RED "\nRun SV instance %d, run %d, on core %d\n", i, j,
                       (size_t)ebbrt::Cpu::GetMine());
               // Run an instance.
-              doWork(snap);
+              doWork(*snap_ptr);
             }
           },
           i % num_cpus);
@@ -116,7 +118,7 @@ void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
 
-  rrCores(3, 4);
+  rrCores(3, 3);
 
   kprintf(RED "Done AppMain()\n" RESET);
 }
