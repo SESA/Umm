@@ -144,5 +144,22 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
   usr_reg.writable = true;
   ret_state.AddRegion(usr_reg);
 
+  // HACK: With the ef zeroed in the sv constructor, this is the minimal state
+  // to add to get a JS app running on a rump kernel. There is fpu and simd
+  // control state as well as a bit set in the CS segment register. These values
+  // were simply observed to work, they may be a superset of what's actually
+  // neded to run. https://www.felixcloutier.com/x86/FXSAVE.html
+
+  // Avoid X87FpuFloatingPointError:
+  // https://wiki.osdev.org/Exceptions#x87_Floating-Point_Exception
+  ret_state.ef.fpu[0] = 0x37f;
+
+  // Avoid SimdFloatingPointException:
+  // https://wiki.osdev.org/Exceptions#SIMD_Floating-Point_Exception
+  ret_state.ef.fpu[3] = 0xffff00001f80;
+
+  // Avoid GeneralProtectionException on CS register.
+  ret_state.ef.cs = 0x8;
+
   return ret_state;
 }
