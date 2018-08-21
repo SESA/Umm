@@ -36,7 +36,7 @@ void twoCoreTest(){
   // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
   // NOTE: Using kickoff here, start on other core.
-  umm::manager->Kickoff();
+  umm::manager->runSV();
 
   snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
       umm::UmSV snap = snap_f.Block().Get();
@@ -45,7 +45,7 @@ void twoCoreTest(){
           [snap]() {
             auto umi = std::make_unique<umm::UmInstance>(snap);
             umm::manager->Load(std::move(umi));
-            umm::manager->deploySnap();
+            umm::manager->runSV();
           },
           ebbrt::Cpu::GetMine() + 1);
   }); // End snap_f.Then(...)
@@ -64,13 +64,13 @@ void singleCoreTest(){
   // Generated UM Instance from the linked in Elf
   umm::manager->Load(std::move(umi));
   // NOTE: Using kickoff here, start on other core.
-  umm::manager->Kickoff();
+  umm::manager->runSV();
   umm::manager->Unload();
 
   umm::UmSV snap = snap_f.Get();
   auto umi2 = std::make_unique<umm::UmInstance>(snap);
   umm::manager->Load(std::move(umi2));
-  umm::manager->deploySnap();
+  umm::manager->runSV();
   umm::manager->Unload();
 }
 
