@@ -21,7 +21,7 @@ extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
-  umm::manager->process_resume(ef);
+  umm::manager->process_gateway(ef);
 }
 
 void umm::UmManager::Init() {
@@ -70,44 +70,58 @@ void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
   }
   else
     kabort();
-
 }
-void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
+
+// void printEF(ebbrt::idt::ExceptionFrame *ef){
+//   uint64_t *regPtr = (uint64_t *)ef;
+//   for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++, regPtr++) {
+//     kprintf("[%d] %p %d\n", i, *regPtr, 8*i);
+//   }
+//   // while(1);
+// }
+
+// void minimize_current_ef(ebbrt::idt::ExceptionFrame *ef){
+//   // 86 64 bit regs. first 64 are floating pt.
+//   // https://www.felixcloutier.com/x86/FXSAVE.html
+//   uint64_t *regPtr = (uint64_t *)ef;
+//   for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++, regPtr++) {
+//     // Zero everything.
+//     *regPtr = 0;
+//   }
+
+//   // Reset to start.
+//   regPtr = (uint64_t *)ef;
+
+// }
+
+void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
+  // This is the enter / exit point for the function execution.
+  // If the core is in the loaded position, we enter, if alerady running, we exit.
+
   auto stat = status();
-  if (stat == running) {
-    // If the instance is running this exception is treated as an exit to
-    // restore context of the client who called Start()
-    *ef = caller_restore_frame_;
-    set_status(finished);
-    // TODO(tommyu): else if status() = loaded
 
-  } else if (stat == kickoff) {
+  // Loaded, ready to start running.
+  if (stat == loaded) {
 
-    // debugKickoff(ef);
-
-    // If this context is not already running we treat this entry an jump into
-    // the instance. Backup the restore_frame (context) of the client and modify
-    // the existing frame to "return" back into the instance
+    // Store the runSV() frame for when done SV execution.
     caller_restore_frame_ = *ef;
 
-    ef->rip = umi_->sv_.ef.rip;
-    ef->rdi = umi_->sv_.ef.rdi;
-    ef->rsi = umi_->sv_.ef.rsi;
-
-    set_status(running);
-
-  } else if (stat == loaded) {
-    // Running a snapshot, store the frame.
-    caller_restore_frame_ = *ef;
-
-    // Overwrite regs from sv.
+    // Overwrite exception frame from sv, setup by loader / setArguments().
     *ef = umi_->sv_.ef;
     set_status(running);
-
-  } else {
-    printf("Trying to resume in an invalid state\n");
-    kabort();
+    return;
   }
+
+  // Already running, ready to switch back to the runSV() caller stack.
+  if (stat == running) {
+    *ef = caller_restore_frame_;
+    set_status(finished);
+    return;
+  }
+
+  printf("Trying to enter / exit from invalid state, %d\n", stat);
+  kabort();
+
 }
 
 void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
@@ -123,17 +137,13 @@ void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
     if (s_ != empty) // Only load when empty
       break;
     goto OK;
-  case kickoff:
-    if (s_ != loaded) // Only kickoff from loaded.
-      break;
-    goto OK;
   case running:
-    if (s_ != loaded && s_ != snapshot && s_ != blocked && s_ != kickoff)
+    if (s_ != loaded && s_ != snapshot && s_ != blocked && s_)
       break;
     clock_ = ebbrt::clock::Wall::Now(); 
     goto OK;
   case blocked:
-    if (s_ != running ) // Only block when running 
+    if (s_ != running ) // Only block when running
       break;
     // Log execution time before blocking. We'll resume the clock when running
     runtime_ +=
@@ -293,9 +303,9 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   return std::move(umi_);
 }
 
-void umm::UmManager::deploySnap() {
+void umm::UmManager::runSV() {
   kassert(status() == loaded);
-  kprintf_force(GREEN "\nUmm... Deploying snapshot on core #%d\n" RESET,
+  kprintf_force(GREEN "\nUmm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
   trigger_bp_exception();
 }
@@ -308,13 +318,13 @@ void umm::UmManager::Halt() {
   trigger_bp_exception();
 }
 
-void umm::UmManager::Kickoff() {
-  kassert(status() == loaded);
-    kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
-                  (size_t)ebbrt::Cpu::GetMine());
-  set_status(kickoff);
-  trigger_bp_exception();
-}
+// void umm::UmManager::Kickoff() {
+//   kassert(status() == loaded);
+//     kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
+//                   (size_t)ebbrt::Cpu::GetMine());
+//   set_status(kickoff);
+//   trigger_bp_exception();
+// }
 
 ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   kassert(valid_address(vaddr));

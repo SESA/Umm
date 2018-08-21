@@ -35,7 +35,7 @@ class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Ho
 public:
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
-  enum Status : uint8_t { empty = 0, loaded, kickoff, running, snapshot, blocked, finished };
+  enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
 
   /** Timer event handler */
   void Fire() override;
@@ -51,11 +51,10 @@ public:
   void Load(std::unique_ptr<UmInstance>);
 
   /** Start execution of loaded instance */
-  void deploySnap(); // TODO(jmcadden): Rename as Enter?
+  void runSV(); // TODO(jmcadden): Rename as Enter?
+
   // Exit point called by solo5 hypercall.
   void Halt();
-  /* Redundancy here. */
-  void Kickoff(); // TODO(jmcadden): Rename as Enter?
 
   /** Extract an SV at a given symbol */
   ebbrt::Future<UmSV> SetCheckpoint(uintptr_t vaddr);
@@ -65,7 +64,7 @@ public:
 
   /* Utility methods */ 
   void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
-  void process_resume(ExceptionFrame *ef);
+  void process_gateway(ExceptionFrame *ef);
   void process_checkpoint(ExceptionFrame *ef);
   Status status() { return status_.get(); } ; 
   void set_status( Status s ) { return status_.set(s);}
@@ -107,7 +106,7 @@ private:
   ebbrt::EventManager::EventContext *context_; // ebbrt event context
 
   ExceptionFrame caller_restore_frame_; 
-  ExceptionFrame snap_restore_frame_; 
+  // ExceptionFrame snap_restore_frame_; 
   std::unique_ptr<UmInstance> umi_;
   // TODO: Reusables or multi-promises 
   ebbrt::Promise<UmSV> umi_snapshot_;
