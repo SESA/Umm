@@ -94,7 +94,8 @@ class simple_pte {
   lin_addr pageTabEntToAddr(unsigned char lvl);
   lin_addr cr3ToAddr();
   void printCommon();
-  void setPte(simple_pte *tab, bool dirty = false);
+  // Set address field of PTE. Optionally dirty bit and accessed bit.
+  void setPte(simple_pte *tab, bool dirty = false, bool acc = false);
   void clearPTE();
 private:
   void printBits(uint64_t val, int len);
@@ -159,7 +160,6 @@ namespace UmPgTblMgmt {
   // static void difference();
 
   // Reclaimer
-  void reclaimAllPages(simple_pte *root, unsigned char lvl, bool reclaimPhysical = true);
 
   // Counters
   // TODO(tommyu): Do we want defaults? Maybe not.
@@ -218,6 +218,8 @@ namespace UmPgTblMgmt {
     asm volatile ( "invlpg (%0)" : : "b"(m) : "memory" );
   }
 
+  void freePageTableLamb(simple_pte *root, unsigned char lvl);
+
   void cacheInvalidateValidPagesLamb(simple_pte *root, uint8_t lvl);
 
   lin_addr getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned char lvl);
@@ -236,6 +238,7 @@ namespace UmPgTblMgmt {
                            simple_pte *root, uint8_t lvl);
 
   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
+  void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L, beforeRetFn BRET);
 
   void traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L);
 
