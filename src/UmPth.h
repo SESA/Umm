@@ -16,6 +16,8 @@ namespace umm {
 class UmPth {
 public:
   UmPth(): root_(nullptr),lvl_(PDPT_LEVEL){};
+  // Destructor.
+  ~UmPth();
   UmPth(simple_pte *root, uint8_t lvl) : root_(root), lvl_(lvl) {}
   UmPth(const UmPth &rhs);
   UmPth& operator=(const UmPth& rhs);

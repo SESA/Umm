@@ -7,17 +7,20 @@
 #include "UmPgTblMgr.h"
 namespace umm {
 
-  UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {
-
+UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {
   kprintf(CYAN "Pth copy constructor\n" RESET);
   *this = rhs;
 }
 
+  UmPth::~UmPth(){
+    if (root_ != nullptr){
+      printf(YELLOW "Reclaiming page table.\n" RESET);
+      UmPgTblMgmt::freePageTableLamb(root_, lvl_);
+    }
+  }
+
 UmPth& UmPth::operator=(const UmPth& rhs){
   lvl_ = rhs.lvl_;
-
-  // kprintf(YELLOW "Pth assignment operator, copy pg tbl if exist.\n" RESET);
-  // kprintf(YELLOW "rhs.lvl_ = %d; rhs.root_ = %p\n" RESET, rhs.lvl_, rhs.root_);
 
   // Shouldn't be overwriting yet.
   kassert(root_ == nullptr);
@@ -25,11 +28,6 @@ UmPth& UmPth::operator=(const UmPth& rhs){
   // Deep copy dirty pages from other pth.
   if(rhs.root_ != nullptr)
     root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
-
-  // if(rhs.root_ != nullptr)
-    // rhs.printMappedPagesCount();
-
-  // kprintf(YELLOW "root_ = %p\n" RESET, root_);
 
   return *this;
 }
