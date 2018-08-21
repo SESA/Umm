@@ -305,7 +305,7 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
 
 void umm::UmManager::runSV() {
   kassert(status() == loaded);
-  kprintf_force(GREEN "\nUmm... Deploying SV on core #%d\n" RESET,
+  kprintf_force(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
   trigger_bp_exception();
 }
