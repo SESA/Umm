@@ -174,7 +174,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   set_status(snapshot);
 
-  kprintf(BLUE "Creating SV for snapshot\n");
+  kprintf(BLUE "Creating SV for snapshot\n" RESET);
   auto snap_sv = new UmSV();
   snap_sv->ef = *ef;
 
@@ -229,8 +229,8 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                          TBL_LEVEL, PDPT_LEVEL);
 
-    // "Install"
-    slotRoot->setPte(pdpt);
+    // "Install". Set accessed in case a walker strides accessed pages.
+    slotRoot->setPte(pdpt, false, true);
 
   } else {
     // Slot root holds ptr to sub PT.
@@ -259,7 +259,7 @@ umm::simple_pte* umm::UmManager::getSlotPML4PTE(){
 
 void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   kassert(newRoot != nullptr);
-  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot);
+  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
