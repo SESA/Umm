@@ -4,7 +4,6 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "UmLoader.h"
-#include "UmRegion.h"
 
 // Symbol table
 umm::ElfLoader::Elf64_Sym const *elf_symtab = nullptr; 
@@ -32,8 +31,8 @@ uintptr_t umm::ElfLoader::GetSymbolAddress(const char *sym) {
   return 0;
 }
 
-umm::UmSV
-umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
+std::unique_ptr<umm::UmInstance>
+umm::ElfLoader::CreateInstanceFromElf(unsigned char *elf_start) {
 
   // Get location of elf header from input binary blob
   auto eh = (const umm::ElfLoader::Ehdr *)elf_start;
@@ -88,7 +87,7 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
     kprintf("Checking section : %s\n", get_section_name(eh, sh));
 
     // New Region structure
-    umm::Region reg = Region();
+    auto reg = UmSV::Region();
     reg.start = sh->sh_addr;
     reg.length = sh->sh_size;
     reg.name = std::string(get_section_name(eh, sh));
@@ -126,7 +125,7 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
     if (reg.name == ".bss") {
       next_page_ptr = ebbrt::Pfn::Up(reg.start + reg.length).ToAddr();
     }
-
+    
     ret_state.AddRegion(reg);
   } // end Elf Section loop
 
@@ -137,29 +136,18 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
   size_t usr_len =
       (kSlotEndVAddr + 1) - next_page_ptr; // Dedicate all remaining memory
 
-  auto usr_reg = Region();
+  auto usr_reg = UmSV::Region();
   usr_reg.start = next_page_ptr;
   usr_reg.length = usr_len; 
   usr_reg.name = std::string("usr");
   usr_reg.writable = true;
   ret_state.AddRegion(usr_reg);
 
-  // HACK: With the ef zeroed in the sv constructor, this is the minimal state
-  // to add to get a JS app running on a rump kernel. There is fpu and simd
-  // control state as well as a bit set in the CS segment register. These values
-  // were simply observed to work, they may be a superset of what's actually
-  // neded to run. https://www.felixcloutier.com/x86/FXSAVE.html
+  // Configure solo5 boot arguments
+  uint64_t argc = Solo5BootArguments(next_page_ptr, SOLO5_USR_REGION_SIZE);
 
-  // Avoid X87FpuFloatingPointError:
-  // https://wiki.osdev.org/Exceptions#x87_Floating-Point_Exception
-  ret_state.ef.fpu[0] = 0x37f;
-
-  // Avoid SimdFloatingPointException:
-  // https://wiki.osdev.org/Exceptions#SIMD_Floating-Point_Exception
-  ret_state.ef.fpu[3] = 0xffff00001f80;
-
-  // Avoid GeneralProtectionException on CS register.
-  ret_state.ef.cs = 0x8;
-
-  return ret_state;
+  // Create the Um Instance and set boot configuration
+  auto umi = std::make_unique<UmInstance>(ret_state);
+  umi->SetArguments(argc);
+  return std::move(umi);
 }

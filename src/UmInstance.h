@@ -22,9 +22,7 @@ namespace umm {
 class UmInstance {
 public:
   UmInstance() = delete;
-  // Using a reference so we don't make a redundant copy.
-  // This is where the argument page table is copied.
-  explicit UmInstance(const UmSV &sv) : sv_(sv) {};
+  explicit UmInstance(UmSV sv) : sv_(sv) {};
 
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);

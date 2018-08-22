@@ -21,7 +21,7 @@ void umm::UmInstance::Print() {
 
 uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
   auto vp_start_addr = Pfn::Down(vaddr).ToAddr();
-  umm::Region& reg = sv_.GetRegionOfAddr(vaddr);
+  umm::UmSV::Region& reg = sv_.GetRegionOfAddr(vaddr);
   reg.count++;
 
   // TODO(jmcadden): Support large pages per-region
@@ -39,7 +39,6 @@ uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
     // Copy backing data onto the allocated page
     std::memcpy((void *)bp_start_addr, (const void *)elf_src_addr, kPageSize);
   } else if (reg.name == ".bss") {
-    //   printf("Allocating a bss page\n");
     // Zero bss pages
     std::memset((void *)bp_start_addr, 0, kPageSize);
   }

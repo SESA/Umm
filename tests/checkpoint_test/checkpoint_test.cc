@@ -9,25 +9,13 @@
 
 #include <Umm.h>
 
-std::unique_ptr<umm::UmInstance> initInstance(){
-  // Create sv.
-  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
+void AppMain() {
 
-  // Create instance.
-  auto umi = std::make_unique<umm::UmInstance>(sv);
+  // Initialize the UmManager
+  umm::UmManager::Init();
 
-  // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
-  umi->SetArguments(argc);
-
-  return std::move(umi);
-}
-
-void twoCoreTest(){
-  // Create instance.
-  auto umi = initInstance();
-
-  // Generated UM Instance from the linked in Elf
+  // Generated UM Instance from the linked in Elf 
+  auto umi = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
   umm::manager->Load(std::move(umi));
 
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
@@ -36,51 +24,19 @@ void twoCoreTest(){
   // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
   // NOTE: Using kickoff here, start on other core.
-  umm::manager->runSV();
+  umm::manager->Kickoff();
 
   snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
       umm::UmSV snap = snap_f.Block().Get();
       // Deploy this snapshot on next core
+      size_t core = ebbrt::Cpu::GetMine() + 1;
       ebbrt::event_manager->SpawnRemote(
           [snap]() {
             auto umi = std::make_unique<umm::UmInstance>(snap);
             umm::manager->Load(std::move(umi));
-            umm::manager->runSV();
+            umm::manager->Start();
           },
-          ebbrt::Cpu::GetMine() + 1);
+          core);
   }); // End snap_f.Then(...)
   kprintf("App... Returned from initial execution\n");
-
-}
-
-void singleCoreTest(){
-  // Create instance.
-  auto umi = initInstance();
-
-  // Get snap future.
-  auto snap_f = umm::manager->SetCheckpoint(
-                                            umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-
-  // Generated UM Instance from the linked in Elf
-  umm::manager->Load(std::move(umi));
-  // NOTE: Using kickoff here, start on other core.
-  umm::manager->runSV();
-  umm::manager->Unload();
-
-  umm::UmSV snap = snap_f.Get();
-  auto umi2 = std::make_unique<umm::UmInstance>(snap);
-  umm::manager->Load(std::move(umi2));
-  umm::manager->runSV();
-  umm::manager->Unload();
-}
-
-void AppMain() {
-
-  // Initialize the UmManager
-  umm::UmManager::Init();
-  twoCoreTest();
-  // singleCoreTest();
-
-  // ebbrt::acpi::PowerOff();
-
 }
