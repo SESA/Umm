@@ -57,18 +57,19 @@ public:
   void Connected() {
     ebbrt::kprintf_force("UmProxy TCP connection established  \n");
 
-    //InitCodeTest();
-    NullCodeTest();
+    InitCodeTest();
+    //NullCodeTest();
 
+#if 0
     size_t mycpu = ebbrt::Cpu::GetMine();
     auto ncpus = ebbrt::Cpu::Count();
 
     ebbrt::event_manager->SpawnRemote(
         []() {
-          ebbrt::clock::SleepMilli(100);
           app_session->InitCodeTest();
         },
         (mycpu+1)%ncpus);
+#endif
   }
 
   void Abort() { ebbrt::kprintf_force("UmProxy TCP connection aborted \n"); }
@@ -131,6 +132,8 @@ private:
 }; // end TcpSession
 
 
+umm::UmSV snap_sv;
+
 void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
@@ -139,23 +142,41 @@ void AppMain() {
   // Create instance.
   auto umi = std::make_unique<umm::UmInstance>(sv);
   // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start,
+                                     SOLO5_USR_REGION_SIZE);
   umi->SetArguments(argc);
   umm::manager->Load(std::move(umi));
 
   // Set breakpoint for snapshot
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
       umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-
-  // Start TCP connection after snapshot breakpoint
   snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
-    ebbrt::NetworkManager::TcpPcb pcb;
-    app_session = new AppTcpSession(std::move(pcb));
-    app_session->Install();
-    std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
-    app_session->Pcb().Connect(ebbrt::Ipv4Address(umip), 8080);
+    // Spawn asyncronously allows the debug context clean up correctly
+    snap_sv = snap_f.Get();
+    ebbrt::event_manager->SpawnLocal(
+        [=]() {
+          umm::manager->Halt(); /* Does not return */
+        },
+        /* force_async = */ true);
   }); // End snap_f.Then(...)
 
   // Start the execution
   umm::manager->runSV();
+  umm::manager->Unload();
+  kprintf("Returned from instance... Redeploying snapshop in 1 sec..\n");
+  ebbrt::clock::SleepMilli(2000);
+  auto umi2 = std::make_unique<umm::UmInstance>(snap_sv);
+  umm::manager->Load(std::move(umi2));
+  ebbrt::event_manager->SpawnLocal(
+      [=]() {
+        ebbrt::NetworkManager::TcpPcb pcb;
+        app_session = new AppTcpSession(std::move(pcb));
+        app_session->Install();
+        std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
+        app_session->Pcb().Connect(ebbrt::Ipv4Address(umip), 8080);
+      },
+      /* force_async = */ true);
+  umm::manager->runSV();
+  umm::manager->Unload();
+  kprintf("Done!\n");
 }
