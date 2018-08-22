@@ -390,9 +390,8 @@ void testCopyDirtyPages(){
 
 void testReclaimAllPages(simple_pte *root){
   printf(YELLOW "%s\n" RESET, __func__);
-  UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
-  UmPgTblMgmt::reclaimAllPages(root, PDPT_LEVEL);
+  UmPgTblMgmt::freePageTableLamb(root, PDPT_LEVEL);
 }
 
 void AppMain() {
