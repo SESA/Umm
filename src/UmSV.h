@@ -5,9 +5,8 @@
 #ifndef UMM_UM_SV_H_
 #define UMM_UM_SV_H_
 
-// #include "umm-common.h"
+#include "umm-common.h"
 #include "UmPth.h"
-#include "UmRegion.h"
 
 namespace umm {
 
@@ -20,26 +19,60 @@ namespace umm {
  */
 class UmSV {
 public:
-  // UmSV();
+  /** SV Region class */
+  struct Region {
+    bool AddrIsInRegion(uintptr_t vaddr) {
+      return (vaddr >= start && vaddr < start + length);
+    }
+    size_t GetOffset(uintptr_t vaddr) {
+      if (AddrIsInRegion(vaddr))
+        return (vaddr - start);
+      else // FIXME: We should be warning or aborting here
+        return 0;
+    }
+    void Print() {
+      kprintf_force("Region name: %s\n", name.c_str());
+      kprintf_force("      start: %p\n", start);
+      kprintf_force("       size: %llu\n", length);
+      kprintf_force("  read-only: %d\n", !writable);
+      kprintf_force("  page size: %d\n", kPageSize << page_order);
+      kprintf_force("page faults: %d\n", count);
+    }
+    /** Mostly-static state */
+    std::string name;
+    uintptr_t start; /** Starting virtual address of region */
+    size_t length;   // TODO: rename to "size"
+    bool writable = false;
+    uint8_t page_order = UMM_REGION_PAGE_ORDER; /** Pow2 page size to conform
+                                                   with EbbRT's PageAllocator
+                                                   interfaces */
+    unsigned char *data = nullptr;              // Location of backing data.
+                                                // TODO: Change to uintptr_t
+    /* Transient state */                       // XXX: Clear on copy?
+    size_t count = 0;                           /** Page faults on region */
+
+  }; // UmSV::Region
+
   UmSV(){ ef = {0}; };
-  // UmSV(const UmSV&);
   explicit UmSV(uintptr_t entry) { ef={0}; SetEntry(entry); };
-
-  void SetEntry(uintptr_t paddr);
-  void AddRegion(Region &reg);
-  void Print();
-  // void deepCopy(const UmSV other);
-  umm::Region& GetRegionOfAddr(uintptr_t vaddr);
-  const Region& GetRegionByName(const char *p);
-
-  // UmSV& operator=(const UmSV& rhs);
-  // bool deepCompareRegionLists(const UmSV& other) const;
-  // void deepCopyRegionList(const UmSV& other);
-
-  std::list<Region> region_list_; // TODO: generic type
+  void SetEntry(uintptr_t paddr) { ef.rip = paddr; }
+  void AddRegion(Region &reg) { region_list_.push_back(reg); }
+  void Print() {
+    for (auto &reg : region_list_)
+      reg.Print();
+      kprintf_force("--\n");
+  }
+  Region &GetRegionOfAddr(uintptr_t vaddr) {
+    for (auto &reg : region_list_) {
+      if (reg.AddrIsInRegion(vaddr)){
+        return reg;
+      }
+    }
+    kabort("Umm... No region found for addr %p n", vaddr);
+  }
+  std::list<Region> region_list_; // TODO: generic type 
   ExceptionFrame ef;
   UmPth pth;
-
 }; // UmSV
 } // umm
 #endif // UMM_UM_SV_H_

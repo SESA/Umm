@@ -24,7 +24,7 @@ namespace ElfLoader {
 const char *get_symbol_name(uint64_t tbl_idx);
 
 // Interprets Elf binary and creates a new Um Instance
-UmSV createSVFromElf(unsigned char *elf_start);
+std::unique_ptr<UmInstance> CreateInstanceFromElf(unsigned char *elf_start);
 
 // Get the address of a symbol in the target
 uintptr_t GetSymbolAddress(const char *sym);

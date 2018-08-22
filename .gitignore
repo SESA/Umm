@@ -33,7 +33,3 @@
 
 # Custom
 build
-
-# Target intermediates
-target
-target.binelf
