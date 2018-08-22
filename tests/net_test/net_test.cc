@@ -65,7 +65,7 @@ public:
 
     ebbrt::event_manager->SpawnRemote(
         []() {
-          ebbrt::clock::SleepMilli(600);
+          ebbrt::clock::SleepMilli(100);
           app_session->InitCodeTest();
         },
         (mycpu+1)%ncpus);
@@ -135,8 +135,13 @@ void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
   // Generated UM Instance from the linked in Elf
-  auto snap = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
-  umm::manager->Load(std::move(snap));
+  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
+  // Create instance.
+  auto umi = std::make_unique<umm::UmInstance>(sv);
+  // Configure solo5 boot arguments
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  umi->SetArguments(argc);
+  umm::manager->Load(std::move(umi));
 
   // Set breakpoint for snapshot
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
@@ -152,5 +157,5 @@ void AppMain() {
   }); // End snap_f.Then(...)
 
   // Start the execution
-  umm::manager->Kickoff();
+  umm::manager->runSV();
 }
