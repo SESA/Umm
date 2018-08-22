@@ -4,7 +4,10 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "UmManager.h"
+// TODO: Delete after debug.
+#include "UmPgTblMgr.h"
 #include "UmProxy.h"
+#include "UmRegion.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
@@ -18,7 +21,7 @@ extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
-  umm::manager->process_resume(ef);
+  umm::manager->process_gateway(ef);
 }
 
 void umm::UmManager::Init() {
@@ -34,63 +37,91 @@ void umm::UmManager::Init() {
                                     std::move(hdlr));
 }
 
-void umm::UmManager::process_resume(ebbrt::idt::ExceptionFrame *ef){
+int myround = 0;
+ebbrt::idt::ExceptionFrame oldef;
+
+void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
+  myround++;
+  // if first round, store old ef
+  if(myround == 1)
+    oldef = *ef;
+  // else if(myround == 2)
+  //   *ef = myef;
+  // else
+  // kabort();
+
+  else if (myround == 2) {
+
+    uint64_t *oldEfPtr = (uint64_t *)&oldef;
+    uint64_t *curEfPtr = (uint64_t *)ef;
+    kprintf("old %p \t\t, current %p\n", oldEfPtr, curEfPtr);
+    for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++) {
+      uint64_t old_reg = oldEfPtr[i];
+      uint64_t current_reg = curEfPtr[i];
+
+      if (old_reg == current_reg)
+        kprintf(GREEN);
+      else
+        kprintf(RED);
+
+      kprintf("[%d] %p\t%p\n", i, old_reg, current_reg);
+      kprintf(RESET);
+    }
+  }
+  else
+    kabort();
+}
+
+void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
+  // This is the enter / exit point for the function execution.
+  // If the core is in the loaded position, we enter, if alerady running, we exit.
+
   auto stat = status();
-  if (stat == running) {
-    // If the instance is running this exception is treated as an exit to
-    // restore context of the client who called Start()
-    *ef = caller_restore_frame_;
-    set_status(finished);
-    // TODO(tommyu): else if status() = loaded
 
-  } else if (stat == kickoff) {
-    printf("kickoff -> running \n");
+  // Loaded, ready to start running.
+  if (stat == loaded) {
 
-    // If this context is not already running we treat this entry an jump into
-    // the instance. Backup the restore_frame (context) of the client and modify
-    // the existing frame to "return" back into the instance
+    // Store the runSV() frame for when done SV execution.
     caller_restore_frame_ = *ef;
 
-    ef->rip = umi_->sv_.ef.rip;
-    ef->rdi = umi_->sv_.ef.rdi;
-    ef->rsi = umi_->sv_.ef.rsi;
-
-    set_status(running);
-
-  } else if (stat == loaded) {
-    printf("Loaded -> running \n");
-    caller_restore_frame_ = *ef;
+    // Overwrite exception frame from sv, setup by loader / setArguments().
     *ef = umi_->sv_.ef;
     set_status(running);
-
-  } else {
-    printf("Trying to resume in an invalid state\n");
-    kabort();
+    return;
   }
+
+  // Already running, ready to switch back to the runSV() caller stack.
+  if (stat == running) {
+    *ef = caller_restore_frame_;
+    set_status(finished);
+    return;
+  }
+
+  printf("Trying to enter / exit from invalid state, %d\n", stat);
+  kabort();
+
 }
 
 void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
+  // printf("Making state change %d->%d\n", s_, new_status);
   auto now = ebbrt::clock::Wall::Now();
   switch (new_status) {
   case empty:
-    if (s_ > loaded) // Don't unload if running or more
+    if (s_ > loaded && s_ != finished) // Don't unload if running or more
       break;
+    runtime_ = 0;
     goto OK;
   case loaded:
     if (s_ != empty) // Only load when empty
       break;
     goto OK;
-  case kickoff:
-    if (s_ != loaded) // Only kickoff from loaded.
-      break;
-    goto OK;
   case running:
-    if (s_ != loaded && s_ != snapshot && s_ != blocked && s_ != kickoff)
+    if (s_ != loaded && s_ != snapshot && s_ != blocked && s_)
       break;
     clock_ = ebbrt::clock::Wall::Now(); 
     goto OK;
   case blocked:
-    if (s_ != running ) // Only block when running 
+    if (s_ != running ) // Only block when running
       break;
     // Log execution time before blocking. We'll resume the clock when running
     runtime_ +=
@@ -121,12 +152,14 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   set_status(snapshot);
 
+  kprintf(BLUE "Creating SV for snapshot\n" RESET);
   auto snap_sv = new UmSV();
   snap_sv->ef = *ef;
 
   // Populate region list.
+  // HACK: use a assignment operator.
   for (const auto &reg : umi_->sv_.region_list_) {
-    UmSV::Region r = reg;
+    Region r = reg;
     snap_sv->AddRegion(r);
   }
 
@@ -174,8 +207,8 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                          TBL_LEVEL, PDPT_LEVEL);
 
-    // "Install"
-    slotRoot->tableOrFramePtrToPte(pdpt);
+    // "Install". Set accessed in case a walker strides accessed pages.
+    slotRoot->setPte(pdpt, false, true);
 
   } else {
     // Slot root holds ptr to sub PT.
@@ -193,12 +226,18 @@ umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
   // TODO(tommyu): don't really need to deref.
   // HACK(tommyu): Fix this busted ass shit..
   return (simple_pte *)
-    (root + kSlotPML4Offset)->pageTabEntToAddr(PML4_LEVEL) .raw;
+    (root + kSlotPML4Offset)->pageTabEntToAddr(PML4_LEVEL).raw;
+}
+
+umm::simple_pte* umm::UmManager::getSlotPML4PTE(){
+  // Root of slot.
+  simple_pte *slotPML4 = UmPgTblMgmt::getPML4Root() + kSlotPML4Offset;
+  return slotPML4;
 }
 
 void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   kassert(newRoot != nullptr);
-  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->tableOrFramePtrToPte(newRoot);
+  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
@@ -222,37 +261,39 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
 }
 
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
-  simple_pte *pdptRoot = getSlotPDPTRoot();
-  kassert(pdptRoot != nullptr);
+  simple_pte *slotPML4Ent = umm::manager->getSlotPML4PTE();
+  kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
   // Clear slot PTE.
-  pdptRoot->clearPTE();
+  printf("Unload\n");
+  // TODO, make sure page table is g2g or reaped.
+  slotPML4Ent->clearPTE();
+
+  // Modified page table, invalidate caches. This is confirmed to matter in virtualization.
+  // UmPgTblMgmt::invlpg((void *) UmPgTblMgmt::getPML4Root()); // Think this is insufficient.
+  UmPgTblMgmt::flushTranslationCaches();
 
   set_status(empty);
 
-  auto tmp_um = std::move(umi_);
-  return std::move(tmp_um);
+
+  kassert( ! UmPgTblMgmt::exists(slotPML4Ent));
+
+  return std::move(umi_);
 }
 
-void umm::UmManager::Start() { 
-  if (status() == loaded)
-    kprintf_force(GREEN "\nUmm... Starting the instance on core #%d\n" RESET,
-                  (size_t)ebbrt::Cpu::GetMine());
-  trigger_entry_exception();
-  kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
-                (size_t)ebbrt::Cpu::GetMine(), status_.time());
-  //umi_->Print();
+void umm::UmManager::runSV() {
+  kassert(status() == loaded);
+  kprintf_force(GREEN "Umm... Deploying SV on core #%d\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine());
+  trigger_bp_exception();
 }
 
-void umm::UmManager::Kickoff() { 
-  if (status() == loaded)
-    kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
-                  (size_t)ebbrt::Cpu::GetMine());
-  set_status(kickoff);
-  trigger_entry_exception();
+void umm::UmManager::Halt() {
+  // TODO:This might be a little harsh in general, but useful for debugging.
+  kassert(status() == running);
   kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
-  //umi_->Print();
+  trigger_bp_exception();
 }
 
 ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){

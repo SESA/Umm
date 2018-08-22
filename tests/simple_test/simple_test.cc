@@ -8,15 +8,29 @@
 
 #include <Umm.h>
 
+auto initInstance(){
+  // Create sv.
+  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
+
+  // Create instance.
+  auto umi = std::make_unique<umm::UmInstance>(sv);
+
+  // Configure solo5 boot arguments
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  umi->SetArguments(argc);
+
+  return umi;
+}
+
 void AppMain() {
 
   // Initialize the UmManager
   umm::UmManager::Init();
-  
-  // Generated UM Instance from the linked in Elf 
-  auto snap = umm::ElfLoader::CreateInstanceFromElf(&_sv_start);
-  umm::manager->Load(std::move(snap));
-  umm::manager->Start();
-	ebbrt::acpi::PowerOff();
 
+  // Create instance.
+  auto umi = initInstance();
+
+  umm::manager->Load(std::move(umi));
+  umm::manager->runSV();
+	ebbrt::acpi::PowerOff();
 }

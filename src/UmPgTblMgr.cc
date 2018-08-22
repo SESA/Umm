@@ -39,7 +39,28 @@ UmPgTblMgmt::afterRecFn  nullARFn   = [](simple_pte *childPte, simple_pte *curPt
 UmPgTblMgmt::leafFn      nullLFn    = nullBRFn;
 UmPgTblMgmt::beforeRetFn nullBRetFn = nullBRFn;
 
+void UmPgTblMgmt::freePageTableLamb(simple_pte *root, unsigned char lvl){
+  // Free leaves.
+  auto leafFn = [](simple_pte *curPte, uint8_t lvl){
+    ebbrt::Pfn myPFN = ebbrt::Pfn::Down(curPte->pageTabEntToAddr(lvl).raw);
+    // kprintf(RED "Free physical page at %p\n" RESET, myPFN.ToAddr());
 
+    kassert(orders[lvl] == 0);
+    ebbrt::page_allocator->Free(myPFN, orders[lvl]);
+  };
+
+  // Free tables.
+  auto bretFn = [](simple_pte *root, uint8_t lvl){
+    ebbrt::Pfn myPFN = ebbrt::Pfn::Down(root);
+    // kprintf(CYAN "Free page table at %p\n" RESET, myPFN.ToAddr());
+
+    // Tables must be 1 4k page.
+    int order = 0;
+    ebbrt::page_allocator->Free(myPFN, order);
+  };
+
+  traverseAccessedPages(root, lvl, leafFn, bretFn);
+}
 
 // NOTE: World of lambdas begins here.
 void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
@@ -49,6 +70,20 @@ void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
     counts[lvl]++;
   };
   traverseValidPages(root, lvl, leafFn);
+}
+
+void UmPgTblMgmt::doubleCacheInvalidate(simple_pte *root, uint8_t lvl){
+  kprintf("Flushing translation caches two ways\n");
+  cacheInvalidateValidPagesLamb(root, lvl);
+  flushTranslationCaches();
+}
+
+void UmPgTblMgmt::cacheInvalidateValidPagesLamb(simple_pte *root, uint8_t lvl) {
+  // Counts number mapped pages.
+  auto leafFn = [](simple_pte *curPte, uint8_t lvl){
+    invlpg(nextTableOrFrame(curPte, 0, lvl));
+  };
+  traverseValidPages(const_cast<umm::simple_pte*>(root), lvl, leafFn);
 }
 
 void UmPgTblMgmt::countValidPTEsLamb(std::vector<uint64_t> &counts,
@@ -120,6 +155,15 @@ void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L)
   };
 
   traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, nullBRetFn);
+}
+
+void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L, beforeRetFn BRET) {
+  auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+    // exists() is redundant assuming non existant ptes are 0.
+    return exists(curPte) && isAccessed(curPte);
+  };
+
+  traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, BRET);
 }
 
 void UmPgTblMgmt::traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L) {
@@ -217,6 +261,7 @@ void UmPgTblMgmt::alignToLvl(unsigned char lvl){
   for (int j = 0; j<4-lvl; j++) printf("\t");
 }
 
+#if 0
 void UmPgTblMgmt::reclaimAllPages(simple_pte *root, unsigned char lvl,
                                   bool reclaimPhysical /*=true*/) {
   // HACK(tommyu): Fails to remove top level table.
@@ -254,6 +299,8 @@ void UmPgTblMgmt::reclaimAllPages(simple_pte *root, unsigned char lvl,
          level_names[lvl], myPFN, myPFN.ToAddr());
   ebbrt::page_allocator->Free(myPFN, orders[TBL_LEVEL]);
 }
+#endif
+
 void UmPgTblMgmt::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
   printf(GREEN "Root at %s: %p\n" RESET, level_names[lvl], root);
   dumpFullTableAddrsHelper(root, lvl);
@@ -263,7 +310,7 @@ void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
   alignToLvl(lvl);
-  printf("%s[\n", level_names[lvl]);
+  printf("%s " CYAN "@ %p" RESET "[\n", level_names[lvl], root);
 
   for (int i = 0; i < 512; i++) {
     if (!exists(root + i)) continue;
@@ -274,7 +321,7 @@ void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
       printf(RED "%d -> %p\n" RESET, i, (root+i)->pageTabEntToAddr(lvl));
     } else {
       alignToLvl(lvl);
-      printf(CYAN "%d -> %p\n" RESET, i, (root+i)->pageTabEntToAddr(lvl));
+      printf(CYAN "%d ->\n" RESET, i);
     }
 
     if(! isLeaf(root + i, lvl)){
@@ -632,6 +679,17 @@ simple_pte* UmPgTblMgmt::getPML4Root(){
   return (simple_pte *) cr3.cr3ToAddr().raw;
 }
 
+void UmPgTblMgmt::flushTranslationCaches(){
+  // Flushes TLB & intermediate caches. There are options for flushing individual
+  // pages using invlpg as well as marking some pages global / using ASID.
+  // Here we keep it simple, and blow everything away.
+  // printf("Flushing address translation caches!\n");
+  // TODO: We're suspicious of this cr3 load being sufficient.
+  asm volatile("movq %cr3, %rax");
+  asm volatile("movq %rax, %cr3");
+  // TODO: Theoretically redundant.
+}
+
 bool UmPgTblMgmt::exists(simple_pte *pte){
   if(pte->decompCommon.SEL == 1)
     return true;
@@ -749,12 +807,14 @@ uint16_t lin_addr::operator[](uint8_t idx){
 bool dbBool = true;
 
 void simple_pte::clearPTE(){
-  raw = 0;
+  // Deref to pte & zero.
+  this->raw = 0;
 }
 
-// TODO Fix this name
-// TODO Fix this name
-void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
+void simple_pte::setPte(simple_pte *tab,
+                        bool dirty /*= false*/,
+                        bool acc /*= false*/){
+
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
   // printf("Have addr, returning pte\n");
@@ -763,6 +823,9 @@ void simple_pte::tableOrFramePtrToPte(simple_pte *tab){
   simple_pte pte; pte.raw = 0;
   pte.decompCommon.SEL = 1;
   pte.decompCommon.RW = 1;
+  pte.decompCommon.A = (acc) ? 1 : 0;
+  pte.decompCommon.DIRTY = (dirty) ? 1 : 0;
+
   pte.decompCommon.PG_TBL_ADDR = (uint64_t)tab >> 12;
 
   raw = pte.raw;
@@ -797,15 +860,17 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   simple_pte *pte_ptr = root + virt[curLvl];
   // Gotta do a mapping
   if (curLvl == mapLvl) {
-    // We're in the table, modify the entry.
-    pte_ptr->tableOrFramePtrToPte((simple_pte *)phys.raw);
+    // We're in the table, modify the entry & importantly mark it dirty.
+    // TODO: Should this always be marked accessed? Def in copy dirty.
+    pte_ptr->setPte((simple_pte *)phys.raw, true, true);
   } else {
     if (exists(pte_ptr)) {
       mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1);
     } else {
       simple_pte *ret =
         mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1);
-      pte_ptr->tableOrFramePtrToPte(ret);
+      // Dirty bit doesn't apply, accessed does.
+      pte_ptr->setPte(ret, false, true);
     }
   }
   return root;

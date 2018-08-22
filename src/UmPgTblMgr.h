@@ -94,7 +94,8 @@ class simple_pte {
   lin_addr pageTabEntToAddr(unsigned char lvl);
   lin_addr cr3ToAddr();
   void printCommon();
-  void tableOrFramePtrToPte(simple_pte *tab);
+  // Set address field of PTE. Optionally dirty bit and accessed bit.
+  void setPte(simple_pte *tab, bool dirty = false, bool acc = false);
   void clearPTE();
 private:
   void printBits(uint64_t val, int len);
@@ -150,6 +151,8 @@ private:
 static_assert(sizeof(lin_addr) == sizeof(uint64_t), "Bad lin_addr SZ");
 
 namespace UmPgTblMgmt {
+  void doubleCacheInvalidate(simple_pte *root, uint8_t lvl);
+  void flushTranslationCaches();
 
   // NOTE: NYI. Higher level operations on page tables.
   // static void areEqual();
@@ -157,7 +160,6 @@ namespace UmPgTblMgmt {
   // static void difference();
 
   // Reclaimer
-  void reclaimAllPages(simple_pte *root, unsigned char lvl, bool reclaimPhysical = true);
 
   // Counters
   // TODO(tommyu): Do we want defaults? Maybe not.
@@ -212,6 +214,14 @@ namespace UmPgTblMgmt {
   // Used in walkPageTable.
   typedef std::function<uintptr_t(simple_pte *curPte, lin_addr virt, uint8_t lvl)> walkLeafFn;
 
+  static inline void invlpg(void* m) {
+    asm volatile ( "invlpg (%0)" : : "b"(m) : "memory" );
+  }
+
+  void freePageTableLamb(simple_pte *root, unsigned char lvl);
+
+  void cacheInvalidateValidPagesLamb(simple_pte *root, uint8_t lvl);
+
   lin_addr getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned char lvl);
 
   void printTraversalLamb(simple_pte *root, uint8_t lvl);
@@ -228,6 +238,7 @@ namespace UmPgTblMgmt {
                            simple_pte *root, uint8_t lvl);
 
   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
+  void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L, beforeRetFn BRET);
 
   void traverseValidPages(simple_pte *root, uint8_t lvl, leafFn L);
 

@@ -41,9 +41,13 @@ void runHelloWorld() {
   printf(YELLOW "%s\n" RESET, __func__);
   // Generated UM Instance from the linked in Elf
   UmManager::Init();
-  auto snap = ElfLoader::CreateInstanceFromElf(&_sv_start);
-  manager->Load(std::move(snap));
-  manager->Start();
+  // auto snap = ElfLoader::CreateInstanceFromElf(&_sv_start);
+  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
+  auto umi = std::make_unique<umm::UmInstance>(sv);
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  umi->SetArguments(argc);
+  manager->Load(std::move(umi));
+  manager->runSV();
 }
 
 void testCountValidPages(){
@@ -386,9 +390,8 @@ void testCopyDirtyPages(){
 
 void testReclaimAllPages(simple_pte *root){
   printf(YELLOW "%s\n" RESET, __func__);
-  UmPgTblMgmt::dumpFullTableAddrs(root, PDPT_LEVEL);
 
-  UmPgTblMgmt::reclaimAllPages(root, PDPT_LEVEL);
+  UmPgTblMgmt::freePageTableLamb(root, PDPT_LEVEL);
 }
 
 void AppMain() {
