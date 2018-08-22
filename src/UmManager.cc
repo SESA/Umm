@@ -90,8 +90,9 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
     return;
   }
 
-  // Already running, ready to switch back to the runSV() caller stack.
-  if (stat == running) {
+  // If running, snapshot or blocked, this entry is treated as a halt
+  // Switch back to the runSV() caller stack.
+  if (stat == running || stat == blocked || stat == snapshot) {
     *ef = caller_restore_frame_;
     set_status(finished);
     return;
@@ -135,10 +136,11 @@ void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
         std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_).count();
     goto OK;
   case finished:
-    if (s_ != running) // Only finish when running
-      break;
-    runtime_ +=
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_).count();
+    if (s_ == running) {
+      runtime_ +=
+          std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_)
+              .count();
+    }
     goto OK;
   default:
     break;
@@ -167,6 +169,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   snap_sv->pth.copyInPages(getSlotPDPTRoot());
 
   // Save the snapshot and resume execution of the instance
+  // This will synchronously execute a future->Then( lambda ) 
   umi_snapshot_.SetValue(*snap_sv);
   set_status(running);
 }
@@ -266,6 +269,7 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
 
   // Clear slot PTE.
   printf("Unload\n");
+  DisableTimers();
   // TODO, make sure page table is g2g or reaped.
   slotPML4Ent->clearPTE();
 
@@ -274,7 +278,6 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   UmPgTblMgmt::flushTranslationCaches();
 
   set_status(empty);
-
 
   kassert( ! UmPgTblMgmt::exists(slotPML4Ent));
 
@@ -289,10 +292,11 @@ void umm::UmManager::runSV() {
 }
 
 void umm::UmManager::Halt() {
+  kassert(status() != empty);
   // TODO:This might be a little harsh in general, but useful for debugging.
-  kassert(status() == running);
   kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
+  DisableTimers();
   trigger_bp_exception();
 }
 
@@ -324,6 +328,11 @@ ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
 void umm::UmManager::Fire(){
   kassert(timer_set);
   timer_set = false;
+
+  // If the instance is not blocked this timeout is stale, ignore it
+  if(status() != blocked)
+    return;
+
   // We take a single clock reading which we use to simplify some corner cases
   // with respect to enabling the timer. This way there is a single time point
   // when this event occurred and all clock computations can be relative to it.
