@@ -20,10 +20,39 @@ namespace umm {
  */
 class UmSV {
 public:
-  // UmSV();
-  UmSV(){ ef = {0}; };
-  // UmSV(const UmSV&);
-  explicit UmSV(uintptr_t entry) { ef={0}; SetEntry(entry); };
+  UmSV(){
+    // Put Exception frame into a known state.
+    ef = {0};
+
+    // HACK: With the ef zeroed in the sv constructor, this is the minimal state
+    // to add to get a JS app running on a rump kernel. There is fpu and simd
+    // control state as well as a bit set in the CS segment register. These values
+    // were simply observed to work, they may be a superset of what's actually
+    // neded to run. https://www.felixcloutier.com/x86/FXSAVE.html
+
+    // Avoid X87FpuFloatingPointError:
+    // https://wiki.osdev.org/Exceptions#x87_Floating-Point_Exception
+    ef.fpu[0] = 0x37f;
+
+    // Avoid SimdFloatingPointException:
+    // https://wiki.osdev.org/Exceptions#SIMD_Floating-Point_Exception
+    ef.fpu[3] = 0xffff00001f80;
+
+    // Avoid GeneralProtectionException on CS register.
+    ef.cs = 0x8;
+
+    kprintf(GREEN "CONS\n" RESET);
+  }
+
+  // Delegating constructor to default.
+  explicit UmSV(uintptr_t entry) : UmSV() { SetEntry(entry); }
+
+  UmSV(const UmSV& rhs){
+    region_list_ = rhs.region_list_;
+    ef = rhs.ef;
+    pth = rhs.pth;
+    kprintf(GREEN "Copy cons.\n" RESET);
+  }
 
   void SetEntry(uintptr_t paddr);
   void AddRegion(Region &reg);
