@@ -72,28 +72,6 @@ void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
     kabort();
 }
 
-// void printEF(ebbrt::idt::ExceptionFrame *ef){
-//   uint64_t *regPtr = (uint64_t *)ef;
-//   for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++, regPtr++) {
-//     kprintf("[%d] %p %d\n", i, *regPtr, 8*i);
-//   }
-//   // while(1);
-// }
-
-// void minimize_current_ef(ebbrt::idt::ExceptionFrame *ef){
-//   // 86 64 bit regs. first 64 are floating pt.
-//   // https://www.felixcloutier.com/x86/FXSAVE.html
-//   uint64_t *regPtr = (uint64_t *)ef;
-//   for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++, regPtr++) {
-//     // Zero everything.
-//     *regPtr = 0;
-//   }
-
-//   // Reset to start.
-//   regPtr = (uint64_t *)ef;
-
-// }
-
 void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   // This is the enter / exit point for the function execution.
   // If the core is in the loaded position, we enter, if alerady running, we exit.
@@ -317,14 +295,6 @@ void umm::UmManager::Halt() {
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
   trigger_bp_exception();
 }
-
-// void umm::UmManager::Kickoff() {
-//   kassert(status() == loaded);
-//     kprintf_force(GREEN "\nUmm... Kicking off the instance on core #%d\n" RESET,
-//                   (size_t)ebbrt::Cpu::GetMine());
-//   set_status(kickoff);
-//   trigger_bp_exception();
-// }
 
 ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   kassert(valid_address(vaddr));
