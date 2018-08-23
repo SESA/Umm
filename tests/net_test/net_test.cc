@@ -163,8 +163,8 @@ void AppMain() {
   // Start the execution
   umm::manager->runSV();
   umm::manager->Unload();
-  kprintf("Returned from instance... Redeploying snapshop in 1 sec..\n");
-  ebbrt::clock::SleepMilli(2000);
+  kprintf("Returned from instance... Redeploying snapshop in 10 sec..\n");
+  ebbrt::clock::SleepMilli(60000);
   auto umi2 = std::make_unique<umm::UmInstance>(snap_sv);
   umm::manager->Load(std::move(umi2));
   ebbrt::event_manager->SpawnLocal(

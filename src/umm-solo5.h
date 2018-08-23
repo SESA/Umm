@@ -21,6 +21,7 @@ const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.
 
 #define SOLO5_USR_REGION_SIZE 1 << 28
 #define SOLO5_CPU_TSC_FREQ 2599997000
+#define SOLO5_CPU_TSC_STEP 300000
 
 /*
  * Block until timeout_nsecs have passed or I/O is
@@ -136,7 +137,9 @@ static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
   kern_info->mem_size = mem_size;
   kern_info->kernel_end = kernel_end;
   kern_info->cmdline = (char *)opts_.c_str();
+  // clock settings
   kern_info->cpu.tsc_freq = SOLO5_CPU_TSC_FREQ;
+  kern_info->cpu.tsc_step = SOLO5_CPU_TSC_STEP;
   // solo5 hypercalls
   kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_WALLTIME] =
       (uint64_t)solo5_hypercall_walltime;
