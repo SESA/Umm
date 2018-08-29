@@ -56,20 +56,7 @@ public:
 
   void Connected() {
     ebbrt::kprintf_force("UmProxy TCP connection established  \n");
-
-    InitCodeTest();
-    //NullCodeTest();
-
-#if 0
-    size_t mycpu = ebbrt::Cpu::GetMine();
-    auto ncpus = ebbrt::Cpu::Count();
-
-    ebbrt::event_manager->SpawnRemote(
-        []() {
-          app_session->InitCodeTest();
-        },
-        (mycpu+1)%ncpus);
-#endif
+    set_connected.SetValue();
   }
 
   void Abort() { ebbrt::kprintf_force("UmProxy TCP connection aborted \n"); }
@@ -84,47 +71,6 @@ public:
     kprintf("**********************\n");
   };
   
-  void NullCodeTest(){
-    auto buf = ebbrt::MakeUniqueIOBuf(0);
-    Send(std::move(buf));
-  }
-
-  void InitCodeTest() {
-    
-    size_t mycpu = ebbrt::Cpu::GetMine();
-    kprintf(YELLOW "KICKING OFF InitCode Test on code #%d\n" RESET,(size_t)mycpu);
-    const std::string code =
-        R"({"value": {"main":"main", "code":"function main(msg){console.log(msg);}"}})";
-    auto header = std::string("POST /init HTTP/1.0\r\n"
-                              "Content-Type:application/json\r\n"
-                              "content-length: 74\r\n\r\n") +
-                  code;
-
-                              //"Connection: keep-alive\r\n"
-    kprintf("Attempt Code Initialization: code_len=%d msg_len=%d\n",
-            code.size(), header.size());
-    auto buf = ebbrt::MakeUniqueIOBuf(header.size());
-    auto dp = buf->GetMutDataPointer();
-    auto str_ptr = reinterpret_cast<char *>(dp.Data());
-    header.copy(str_ptr, header.size());
-    Send(std::move(buf));
-  }
-
-  void TestRunCode() {
-    const std::string run_arg =
-        R"({"value": {"payload":"WELL FINALLY WORKS!"}})";
-    kprintf("LEN OF RUN CODE: %d\n", run_arg.size());
-    auto run = std::string("POST /run HTTP/1.0\r\n"
-                           "Content-Type:application/json\r\n"
-                           "Connection: keep-alive\r\n"
-                           "content-length: 44\r\n\r\n") +
-               run_arg;
-    auto buf = ebbrt::MakeUniqueIOBuf(run.size());
-    auto dp = buf->GetMutDataPointer();
-    auto str_ptr = reinterpret_cast<char *>(dp.Data());
-    run.copy(str_ptr, run.size());
-    Send(std::move(buf));
-  }
   ebbrt::Future<void> is_connected;
 
 private:
@@ -163,8 +109,8 @@ void AppMain() {
   // Start the execution
   umm::manager->runSV();
   umm::manager->Unload();
-  kprintf("Returned from instance... Redeploying snapshop in 10 sec..\n");
-  ebbrt::clock::SleepMilli(60000);
+  kprintf("returned from instance... Redeploying snapshop & connecting in 5 seconds..\n");
+  ebbrt::clock::SleepMilli(5000);
   auto umi2 = std::make_unique<umm::UmInstance>(snap_sv);
   umm::manager->Load(std::move(umi2));
   ebbrt::event_manager->SpawnLocal(
@@ -172,6 +118,9 @@ void AppMain() {
         ebbrt::NetworkManager::TcpPcb pcb;
         app_session = new AppTcpSession(std::move(pcb));
         app_session->Install();
+        app_session->is_connected.Then([=](auto f) {
+          kprintf("Alright, we are connected!\n");
+        });
         std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
         app_session->Pcb().Connect(ebbrt::Ipv4Address(umip), 8080);
       },
