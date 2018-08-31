@@ -9,7 +9,21 @@
 
 void umm::UmInstance::SetArguments(const uint64_t argc,
                                    const char *argv[]) {
-  sv_.ef.rdi = argc;
+  // NOTE: Should we be referencing this type?
+  // Shallow copy of boot info.
+  bi = *(ukvm_boot_info *) argc;
+
+  {
+    // Make buffer for a deep copy.
+    // Need to add 1 for null.
+    char *tmp = (char *) malloc(strlen(bi.cmdline) + 1);
+    // Do the copy.
+    strcpy(tmp, bi.cmdline);
+    // Swing ptr intentionally dropping old.
+    bi.cmdline = tmp;
+  }
+
+  sv_.ef.rdi = (uint64_t) &bi;
   if (argv)
     sv_.ef.rsi = (uint64_t)argv;
 }

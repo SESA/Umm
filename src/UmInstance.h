@@ -6,6 +6,9 @@
 #define UMM_UM_INSTANCE_H_
 
 #include "umm-common.h"
+
+// TODO: this feels bad.
+#include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 #include "UmSV.h"
 
 namespace umm {
@@ -37,6 +40,9 @@ public:
 
 	// TODO: Add runtime duration into the instance
   size_t page_count = 0; // TODO: replace with region-specific counter
+
+  // This may be overkill.
+  ukvm_boot_info bi;
   UmSV sv_;
 }; // umm::UmInstance
 }
