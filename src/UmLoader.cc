@@ -87,7 +87,7 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
     // Error if section is not page-aligned
     kassert((sh->sh_addr % kPageSize) == 0);
 
-    kprintf("Checking section : %s\n", get_section_name(eh, sh));
+    // kprintf("Checking section : %s\n", get_section_name(eh, sh));
 
     // New Region structure
     umm::Region reg = Region();
@@ -113,7 +113,7 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
       if (sh_name.substr(0, 8) != "link_set" && sh_name.substr(0, 5) != ".gcc_")
         break;
       // Assume a link_set_* section and include it the current section
-      kprintf("Extra data section found: %s\n", sh_name.c_str());
+      // kprintf("Extra data section found: %s\n", sh_name.c_str());
       i++;
       // Expand Region length to include addition section
       if (reg.start + reg.length < nxt_sh->sh_addr) {
@@ -147,5 +147,6 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
   ret_state.AddRegion(usr_reg);
 
 
+  kprintf("ELF loader done.\n");
   return ret_state;
 }
