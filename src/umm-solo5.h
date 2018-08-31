@@ -87,7 +87,7 @@ static int solo5_hypercall_netread(volatile void *arg) {
 static int solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
   (void)arg_;
-  kprintf("\nHalting Solo5. Goodbye!\n");
+  ebbrt::kprintf("\nHalting Solo5. Goodbye!\n");
   umm::manager->Halt();
   return 0;
 }
@@ -98,35 +98,35 @@ static int solo5_hypercall_walltime(volatile void *arg) {
   auto dur = tp.time_since_epoch();
   auto dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
   arg_->nsecs = dur_ns.count();
-  kprintf("EbbRT walltime is %llu\n", arg_->nsecs);
+  ebbrt::kprintf("EbbRT walltime is %llu\n", arg_->nsecs);
   return 0;
 }
 
 static int solo5_hypercall_puts(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_puts *)arg;
   for (unsigned int i = 0; i < arg_->len; i++)
-    kprintf_force("%c", arg_->data[i]);
+    ebbrt::kprintf_force("%c", arg_->data[i]);
   return 0;
 }
 
 static int solo5_hypercall_blkinfo(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkinfo *)arg;
   (void)arg_;
-  kprintf("Error: Unsupported hypercall blkinfo \n");
+  ebbrt::kprintf("Error: Unsupported hypercall blkinfo \n");
   return 1;
 }
 
 static int solo5_hypercall_blkread(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkread *)arg;
   (void)arg_;
-  kprintf("Error: Unsupported hypercall blkread \n");
+  ebbrt::kprintf("Error: Unsupported hypercall blkread \n");
   return 1;
 }
 
 static int solo5_hypercall_blkwrite(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkwrite *)arg;
   (void)arg_;
-  kprintf("Error: Unsupported hypercall blkwrite \n");
+  ebbrt::kprintf("Error: Unsupported hypercall blkwrite \n");
   return 1;
 }
 

@@ -8,6 +8,7 @@
 #include "UmPgTblMgr.h"
 #include "UmProxy.h"
 #include "UmRegion.h"
+#include "umm-internal.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>

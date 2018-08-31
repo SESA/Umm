@@ -6,10 +6,11 @@
 #define UMM_UMM_H_
 
 /** Umm.h
- *  Primary include for application using the Umm library
+ *  Client header for interaction with the Umm library
  */
 #include "UmInstance.h"
 #include "UmLoader.h"
 #include "UmManager.h"
+#include "UmSV.h"
 
 #endif // UMM_UMM_H_

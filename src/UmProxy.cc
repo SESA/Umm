@@ -6,6 +6,7 @@
 #include <string.h> // memcpy
 
 #include "UmProxy.h"
+#include "umm-internal.h"
 
 void umm::UmProxy::Init() {
   // Setup Ebb translations

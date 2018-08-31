@@ -6,6 +6,7 @@
 #include <ebbrt/native/PageAllocator.h>
 
 #include "UmInstance.h"
+#include "umm-internal.h"
 
 void umm::UmInstance::SetArguments(const uint64_t argc,
                                    const char *argv[]) {

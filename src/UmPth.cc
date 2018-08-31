@@ -5,6 +5,8 @@
 
 #include "UmPth.h"
 #include "UmPgTblMgr.h"
+#include "umm-internal.h"
+
 namespace umm {
 
 UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {

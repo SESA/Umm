@@ -9,6 +9,7 @@
 #include <unordered_map>
 // #include "../../../EbbRT/src/native/Perf.h"
 #include "umm-common.h"
+#include "umm-internal.h"
 
 #include "UmPgTblMgr.h"
 // #include <Umm.h>

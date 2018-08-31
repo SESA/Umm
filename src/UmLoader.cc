@@ -5,6 +5,7 @@
 
 #include "UmLoader.h"
 #include "UmRegion.h"
+#include "umm-internal.h"
 
 // Symbol table
 umm::ElfLoader::Elf64_Sym const *elf_symtab = nullptr; 

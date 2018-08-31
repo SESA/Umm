@@ -18,6 +18,9 @@ namespace umm {
  *
  * SV originates from the Om/PSML Research Group at Boston University
  */
+
+using ebbrt::idt::ExceptionFrame;
+
 class UmSV {
 public:
   UmSV(){
@@ -41,7 +44,7 @@ public:
     // Avoid GeneralProtectionException on CS register.
     ef.cs = 0x8;
 
-    kprintf(GREEN "CONS\n" RESET);
+    ebbrt::kprintf(GREEN "CONS\n" RESET);
   }
 
   // Delegating constructor to default.
@@ -51,7 +54,7 @@ public:
     region_list_ = rhs.region_list_;
     ef = rhs.ef;
     pth = rhs.pth;
-    kprintf(GREEN "Copy cons.\n" RESET);
+    ebbrt::kprintf(GREEN "Copy cons.\n" RESET);
   }
 
   void SetEntry(uintptr_t paddr);
