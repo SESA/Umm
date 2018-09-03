@@ -133,7 +133,7 @@ static int solo5_hypercall_blkwrite(volatile void *arg) {
 // Set solo5 boot arguments
 static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
                                           uint64_t mem_size,
-                                          std::string &cmdline) {
+                                          const std::string &cmdline = opts_) {
   auto kern_info = new struct ukvm_boot_info;
   kern_info->mem_size = mem_size;
   kern_info->kernel_end = kernel_end;
