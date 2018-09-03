@@ -14,7 +14,7 @@
 #include <atomic>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
-  kprintf(MAGENTA "Umm... Taking a snapshot\n" RESET);
+  kprintf_force(MAGENTA "Umm... Taking a snapshot\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
 
@@ -99,7 +99,7 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
     return;
   }
 
-  printf("Trying to enter / exit from invalid state, %d\n", stat);
+  kprintf_force("Trying to enter / exit from invalid state, %d\n", stat);
   kabort();
 
 }
@@ -183,7 +183,7 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
-    kprintf(RED "Umm... Snapshot Pagefault\n" RESET);
+    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
   kassert(valid_address(vaddr));
 
@@ -252,7 +252,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
   // If we have a vaild pth root, install it.
   auto pthRoot = umi->sv_.pth.Root();
   if(pthRoot != nullptr){
-    printf("Installing instance pte root.\n");
+    kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
     kassert(pdptRoot != nullptr);
@@ -269,7 +269,7 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
   // Clear slot PTE.
-  printf("Unload\n");
+  kprintf("Unload\n");
   DisableTimers();
   // TODO, make sure page table is g2g or reaped.
   slotPML4Ent->clearPTE();

@@ -26,17 +26,17 @@ hexdump(const unsigned char *start, const int lines) {
   int j;
   for (j=0; j<lines; j++){
     int offset=j*16;
-    kprintf("%08x:  ", offset);
+    ebbrt::kprintf("%08x:  ", offset);
     for (int i=0;i<16;i++){
-      kprintf("%02x  ", start[offset+i]);
+      ebbrt::kprintf("%02x  ", start[offset+i]);
     }
-    kprintf("|");
+    ebbrt::kprintf("|");
     for (int i=0;i<16;i++){
       unsigned char c=start[offset+i];
-      if (c>=' ' && c<='~')  kprintf("%c", c);
-      else  kprintf(".");
+      if (c>=' ' && c<='~')  ebbrt::kprintf("%c", c);
+      else  ebbrt::kprintf(".");
     }
-    kprintf("|\n");
+    ebbrt::kprintf("|\n");
   }
   return j;
 }
@@ -66,9 +66,9 @@ public:
                          b->ComputeChainDataLength());
     auto str_ptr = reinterpret_cast<const unsigned char *>(b->Data());
     int lines = (b->ComputeChainDataLength() / 16)+1;
-    kprintf("**********************\n");
+    ebbrt::kprintf("**********************\n");
     hexdump(str_ptr, lines);
-    kprintf("**********************\n");
+    ebbrt::kprintf("**********************\n");
   };
   
   ebbrt::Future<void> is_connected;
@@ -109,7 +109,7 @@ void AppMain() {
   // Start the execution
   umm::manager->runSV();
   umm::manager->Unload();
-  kprintf("returned from instance... Redeploying snapshop & connecting in 5 seconds..\n");
+  ebbrt::kprintf_force("returned from instance... Redeploying snapshop & connecting in 5 seconds..\n");
   ebbrt::clock::SleepMilli(5000);
   auto umi2 = std::make_unique<umm::UmInstance>(snap_sv);
   umm::manager->Load(std::move(umi2));
@@ -119,7 +119,7 @@ void AppMain() {
         app_session = new AppTcpSession(std::move(pcb));
         app_session->Install();
         app_session->is_connected.Then([=](auto f) {
-          kprintf("Alright, we are connected!\n");
+          ebbrt::kprintf_force("Alright, we are connected!\n");
         });
         std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
         app_session->Pcb().Connect(ebbrt::Ipv4Address(umip), 8080);
@@ -127,5 +127,5 @@ void AppMain() {
       /* force_async = */ true);
   umm::manager->runSV();
   umm::manager->Unload();
-  kprintf("Done!\n");
+  ebbrt::kprintf("Done!\n");
 }

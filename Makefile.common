@@ -29,6 +29,8 @@ EBBRTAR=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-ar
 UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP --sysroot=$(EBBRT_SYSROOT)
 ifdef DEBUG  #e.g., $ make DEBUG=1
 UMM_CPP_FLAGS += -O0 -g3
+else
+UMM_CPP_FLAGS += -O4 -DNDEBUG
 endif
 UMM_ARCH=x86_64
 UMM_ARFLAGS =rcs 

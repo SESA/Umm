@@ -31,9 +31,9 @@ void twoCoreTest(){
   umm::manager->Load(std::move(umi));
 
   ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
-                                                                umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+   umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
   // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
-  // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
+                                                                //umm::ElfLoader::GetSymbolAddress("uv_uptime"));
 
   // NOTE: Using kickoff here, start on other core.
   umm::manager->runSV();
@@ -49,7 +49,7 @@ void twoCoreTest(){
           },
           ebbrt::Cpu::GetMine() + 1);
   }); // End snap_f.Then(...)
-  kprintf("App... Returned from initial execution\n");
+  ebbrt::kprintf_force("App... Returned from initial execution\n");
 
 }
 

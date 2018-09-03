@@ -3,8 +3,11 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
+#include <functional>
+
 #include <ebbrt/native/Acpi.h>
 #include <ebbrt/native/Clock.h>
+#include <ebbrt/native/Pfn.h>
 
 #include <ebbrt/native/PageAllocator.h>
 
@@ -22,7 +25,7 @@ lin_addr getPhysPg(uint8_t sz){
   kassert(sz == 1);
 
   auto page = ebbrt::page_allocator->Alloc();
-  kbugon(page == Pfn::None());
+  ebbrt::kbugon(page == ebbrt::Pfn::None());
   auto page_addr = page.ToAddr();
   lin_addr la; la.raw = page_addr;
   return la;

@@ -37,7 +37,7 @@ umm::UmSV getSnap(){
   auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
   // Create the Um Instance and set boot configuration
-  kprintf(BLUE "Getting umi sv\n" RESET);
+  ebbrt::kprintf_force(BLUE "Getting umi sv\n" RESET);
   auto umi = std::make_unique<umm::UmInstance>(sv);
 
   // Configure solo5 boot arguments
@@ -55,7 +55,7 @@ umm::UmSV getSnap(){
   umm::manager->Unload();
 
   // assuming this doesn't change. add const.
-  kprintf("Grabbing snapshot from future\n");
+  ebbrt::kprintf_force("Grabbing snapshot from future\n");
   return snap_f.Get();
 }
 
@@ -63,7 +63,7 @@ umm::UmSV getSnap(){
 void reloadSingleCore(int numRuns) {
   // Idea, take one snap, deploy on many cores.
   // assuming this doesn't change. add const.
-  kprintf("Grabbing snapshot from future\n");
+  ebbrt::kprintf_force("Grabbing snapshot from future\n");
 
   auto snap = getSnap();
 
@@ -104,7 +104,7 @@ void rrCores(int numRounds, int numRuns){
             while (sleep--);
 
             for (int j = 0; j < numRuns; j++) {
-              kprintf(RED "\nRun SV instance %d, run %d, on core %d\n", i, j,
+              ebbrt::kprintf_force(RED "\nRun SV instance %d, run %d, on core %d\n", i, j,
                       (size_t)ebbrt::Cpu::GetMine());
               // Run an instance.
               doWork(*snap_ptr);
@@ -120,5 +120,5 @@ void AppMain() {
 
   rrCores(3, 3);
 
-  kprintf(RED "Done AppMain()\n" RESET);
+  ebbrt::kprintf_force(RED "Done AppMain()\n" RESET);
 }

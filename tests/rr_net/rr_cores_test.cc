@@ -39,7 +39,7 @@ void multicoreReloadElf(int numRounds, int numRepeats){
 
   kassert(my_cpu == 0);
   for (auto i = my_cpu; i < num_cpus * numRounds; i++) {
-    kprintf(YELLOW "starting core %d\n" RESET, i);
+    ebbrt::kprintf_force(YELLOW "starting core %d\n" RESET, i);
 
     // Use to prevent concurrency & make output readable.
     ebbrt::Promise<void> p;
@@ -61,5 +61,5 @@ void AppMain() {
 
   multicoreReloadElf(2, 2);
 
-  kprintf(RED "Done AppMain()\n" RESET);
+  ebbrt::kprintf_force(RED "Done AppMain()\n" RESET);
 }

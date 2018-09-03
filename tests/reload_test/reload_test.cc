@@ -47,7 +47,7 @@ void loadFromSVTest(int numRuns){
     umi->SetArguments(argc);
 
     umm::manager->Load(std::move(umi));
-    kprintf("Kicking off\n");
+    ebbrt::kprintf_force("Kicking off\n");
     umm::manager->runSV();
     umm::manager->Unload();
 
@@ -58,7 +58,7 @@ const umm::UmSV getSnap(){
   auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
   // Create the Um Instance and set boot configuration
-  kprintf(BLUE "Getting umi sv\n" RESET);
+  ebbrt::kprintf_force(BLUE "Getting umi sv\n" RESET);
   auto umi = std::make_unique<umm::UmInstance>(sv);
 
   // Configure solo5 boot arguments
@@ -76,7 +76,7 @@ const umm::UmSV getSnap(){
   umm::manager->Unload();
 
   // assuming this doesn't change. add const.
-  kprintf("Grabbing snapshot from future\n");
+  ebbrt::kprintf_force("Grabbing snapshot from future\n");
   return snap_f.Get();
 }
 

@@ -16,7 +16,7 @@ UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {
 
   UmPth::~UmPth(){
     if (root_ != nullptr){
-      printf(YELLOW "Reclaiming page table.\n" RESET);
+      kprintf(YELLOW "Reclaiming page table.\n" RESET);
       UmPgTblMgmt::freePageTableLamb(root_, lvl_);
     }
   }
@@ -46,9 +46,9 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
   // kprintf(BLUE "Copy done, root_ is %p\n", root_);
 
   // DEBUGGING
-  // printf(YELLOW "After copy, dumping old page table\n" RESET);
+  // kprintf(YELLOW "After copy, dumping old page table\n" RESET);
   // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(srcRoot), PDPT_LEVEL);
-  // printf(CYAN "After copy, dumping new page table\n" RESET);
+  // kprintf(CYAN "After copy, dumping new page table\n" RESET);
   // printMappedPagesCount();
   // UmPgTblMgmt::dumpFullTableAddrs(root_, PDPT_LEVEL);
 
@@ -56,8 +56,8 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
 
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
   UmPgTblMgmt::countValidPagesLamb(counts, root_, lvl_);
-  printf(CYAN "Copied: %lu dirty 4k pages", counts[_4K__]);
-  printf(" in (%dms)\n" RESET, std::chrono::duration_cast<std::chrono::milliseconds>(stop - start));
+  kprintf(CYAN "Copied: %lu dirty 4k pages", counts[_4K__]);
+  kprintf(" in (%dms)\n" RESET, std::chrono::duration_cast<std::chrono::milliseconds>(stop - start));
 
   kassert(root_ != nullptr);
   // while(1);
@@ -68,7 +68,7 @@ void UmPth::printMappedPagesCount() const{
   UmPgTblMgmt::countValidPagesLamb(counts, root_, lvl_);
 
   for (int i=4; i>0; i--){
-    printf(YELLOW "counts[%s] = %lu\n" RESET, level_names[i], counts[i]);
+    kprintf(YELLOW "counts[%s] = %lu\n" RESET, level_names[i], counts[i]);
   }
 }
 }
