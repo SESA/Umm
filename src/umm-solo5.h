@@ -132,11 +132,12 @@ static int solo5_hypercall_blkwrite(volatile void *arg) {
 
 // Set solo5 boot arguments
 static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
-                                          uint64_t mem_size) {
+                                          uint64_t mem_size,
+                                          std::string &cmdline) {
   auto kern_info = new struct ukvm_boot_info;
   kern_info->mem_size = mem_size;
   kern_info->kernel_end = kernel_end;
-  kern_info->cmdline = (char *)opts_.c_str();
+  kern_info->cmdline = (char *)cmdline.c_str();
   // clock settings
   kern_info->cpu.tsc_freq = SOLO5_CPU_TSC_FREQ;
   kern_info->cpu.tsc_step = SOLO5_CPU_TSC_STEP;
