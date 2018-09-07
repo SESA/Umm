@@ -61,7 +61,12 @@ struct ukvm_netwrite {
 }; */
 static int solo5_hypercall_netwrite(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netwrite *)arg;
-  arg_->ret = umm::proxy->UmWrite(arg_->data, arg_->len);
+  arg_->ret = arg_->len; // Lie
+  void* buf = malloc(arg_->len);
+  memcpy((void *)buf, arg_->data, arg_->len);
+  unsigned long len = arg_->len;
+  ebbrt::event_manager->SpawnLocal(
+      [buf,len]() { umm::proxy->UmWrite(const_cast<const void *>(buf), len); }, true);
   return 0;
 }
 
