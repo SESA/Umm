@@ -68,6 +68,9 @@ public:
 
   /**	UmHasData - Returns 'true' if there is data to be read */
   bool UmHasData() { return !um_recv_queue_.empty(); }
+  void UmClearData() {
+    um_recv_queue_ = std::queue<std::unique_ptr<ebbrt::IOBuf>>();
+  }
 
   /** Receive data from the ebbrt network stack */
   void Receive(std::unique_ptr<ebbrt::IOBuf> buf, ebbrt::PacketInfo pinfo);

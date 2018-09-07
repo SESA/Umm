@@ -269,8 +269,8 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
   // Clear slot PTE.
-  kprintf("Unload\n");
   DisableTimers();
+
   // TODO, make sure page table is g2g or reaped.
   slotPML4Ent->clearPTE();
 
@@ -297,6 +297,8 @@ void umm::UmManager::Halt() {
   // TODO:This might be a little harsh in general, but useful for debugging.
   kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
+  // Clear proxy data
+  proxy->UmClearData();
   DisableTimers();
   trigger_bp_exception();
 }

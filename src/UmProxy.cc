@@ -52,10 +52,11 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
   /// DEBUG OUTPUT
-  // ebbrt::kprintf_force("LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+  //ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+  //                     (size_t)ebbrt::Cpu::GetMine(),
   //                  buf->ComputeChainDataLength(),
   //                  buf->CountChainElements());
-  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  //umm::UmProxy::DebugPrint(buf->GetDataPointer());
 
   // TODO(jmcadden): Send buffer out asynchronously
   // ebbrt::event_manager->SpawnLocal([ this, buf = std::move(buf) ]() { });
@@ -112,7 +113,8 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   } // end if kNeedsCsum
 
   /// DEBUG OUTPUT
-  //ebbrt::kprintf_force("LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+  //ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+  //                     (size_t)ebbrt::Cpu::GetMine(),
   //                     buf->ComputeChainDataLength(),
   //                     buf->CountChainElements());
   //umm::UmProxy::DebugPrint(buf->GetDataPointer());
