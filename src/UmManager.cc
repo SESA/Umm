@@ -184,7 +184,7 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
     kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
-
+  kassert(status() != empty);
   kassert(valid_address(vaddr));
 
   auto virtual_page = Pfn::Down(vaddr);
