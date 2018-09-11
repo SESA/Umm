@@ -14,7 +14,7 @@
 #include <atomic>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
-  kprintf_force(MAGENTA "Umm... Taking a snapshot\n" RESET);
+  kprintf_force(MAGENTA "Umm... Taking a snapshot!!!\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
 
@@ -155,7 +155,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   set_status(snapshot);
 
-  kprintf(BLUE "Creating SV for snapshot\n" RESET);
+  kprintf(BLUE "Creating SV for snapshot!!!\n" RESET);
   auto snap_sv = new UmSV();
   snap_sv->ef = *ef;
 
@@ -171,7 +171,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
 
   // Save the snapshot and resume execution of the instance
   // This will synchronously execute a future->Then( lambda ) 
-  umi_snapshot_.SetValue(*snap_sv);
+  umi_snapshot_->SetValue(*snap_sv);
   set_status(running);
 }
 
@@ -325,7 +325,10 @@ ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   // behavior.
   dr7.LEN0 = 0;
   dr7.set();
-  return umi_snapshot_.GetFuture();
+
+  // TODO: leak
+  umi_snapshot_ = new ebbrt::Promise<umm::UmSV>();
+  return umi_snapshot_->GetFuture();
 }
 
 void umm::UmManager::Fire(){

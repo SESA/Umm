@@ -52,11 +52,11 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
   /// DEBUG OUTPUT
-  //ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-  //                     (size_t)ebbrt::Cpu::GetMine(),
-  //                  buf->ComputeChainDataLength(),
-  //                  buf->CountChainElements());
-  //umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+                      (size_t)ebbrt::Cpu::GetMine(),
+                   buf->ComputeChainDataLength(),
+                   buf->CountChainElements());
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
 
   // TODO(jmcadden): Send buffer out asynchronously
   // ebbrt::event_manager->SpawnLocal([ this, buf = std::move(buf) ]() { });
@@ -113,11 +113,11 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   } // end if kNeedsCsum
 
   /// DEBUG OUTPUT
-  //ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
-  //                     (size_t)ebbrt::Cpu::GetMine(),
-  //                     buf->ComputeChainDataLength(),
-  //                     buf->CountChainElements());
-  //umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+                      (size_t)ebbrt::Cpu::GetMine(),
+                      buf->ComputeChainDataLength(),
+                      buf->CountChainElements());
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
 
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
 }
@@ -132,40 +132,40 @@ void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
 
 void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
   auto eh = dp.Get<ebbrt::EthernetHeader>();
-  ebbrt::kprintf_force(" 0. EtherNet\n");
-  ebbrt::kprintf_force("  type=0x%x\n", ebbrt::ntohs(eh.type));
-  ebbrt::kprintf_force("  src_mac=%x:%x:%x:%x:%x:%x\n", eh.src[0], eh.src[1],
-                       eh.src[2], eh.src[3], eh.src[4], eh.src[5]);
-  ebbrt::kprintf_force("  dst_mac=%x:%x:%x:%x:%x:%x\n", eh.dst[0], eh.dst[1],
-                       eh.dst[2], eh.dst[3], eh.dst[4], eh.dst[5]);
+  // ebbrt::kprintf_force(" 0. EtherNet\n");
+  // ebbrt::kprintf_force("  type=0x%x\n", ebbrt::ntohs(eh.type));
+  // ebbrt::kprintf_force("  src_mac=%x:%x:%x:%x:%x:%x\n", eh.src[0], eh.src[1],
+  //                      eh.src[2], eh.src[3], eh.src[4], eh.src[5]);
+  // ebbrt::kprintf_force("  dst_mac=%x:%x:%x:%x:%x:%x\n", eh.dst[0], eh.dst[1],
+  //                      eh.dst[2], eh.dst[3], eh.dst[4], eh.dst[5]);
   auto ethtype = ebbrt::ntohs(eh.type);
 
   if (ethtype == ebbrt::kEthTypeArp) {
-    auto ap = dp.Get<ebbrt::ArpPacket>();
-    ebbrt::kprintf_force(" 1. ARP\n");
-    ebbrt::kprintf_force("  arp hardware type 0x%x\n", ebbrt::ntohs(ap.htype));
-    ebbrt::kprintf_force("  arp proto type 0x%x\n", ebbrt::ntohs(ap.ptype));
-    ebbrt::kprintf_force("  arp opcode 0x%x\n", ebbrt::ntohs(ap.oper));
-    ebbrt::kprintf_force("  arp sender mac %x:%x:%x:%x:%x:%x\n", ap.sha[0],
-                         ap.sha[1], ap.sha[2], ap.sha[3], ap.sha[4], ap.sha[5]);
-    ebbrt::kprintf_force("  arp target mac %x:%x:%x:%x:%x:%x\n", ap.tha[0],
-                         ap.tha[1], ap.tha[2], ap.tha[3], ap.tha[4], ap.tha[5]);
-    auto spa = ap.spa.toArray();
-    ebbrt::kprintf_force("  arp sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-                         spa[1], spa[2], spa[3]);
-    spa = ap.tpa.toArray();
-    ebbrt::kprintf_force("  arp target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-                         spa[1], spa[2], spa[3]);
+    // auto ap = dp.Get<ebbrt::ArpPacket>();
+    // ebbrt::kprintf_force(" 1. ARP\n");
+    // ebbrt::kprintf_force("  arp hardware type 0x%x\n", ebbrt::ntohs(ap.htype));
+    // ebbrt::kprintf_force("  arp proto type 0x%x\n", ebbrt::ntohs(ap.ptype));
+    // ebbrt::kprintf_force("  arp opcode 0x%x\n", ebbrt::ntohs(ap.oper));
+    // ebbrt::kprintf_force("  arp sender mac %x:%x:%x:%x:%x:%x\n", ap.sha[0],
+    //                      ap.sha[1], ap.sha[2], ap.sha[3], ap.sha[4], ap.sha[5]);
+    // ebbrt::kprintf_force("  arp target mac %x:%x:%x:%x:%x:%x\n", ap.tha[0],
+    //                      ap.tha[1], ap.tha[2], ap.tha[3], ap.tha[4], ap.tha[5]);
+    // auto spa = ap.spa.toArray();
+    // ebbrt::kprintf_force("  arp sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+    //                      spa[1], spa[2], spa[3]);
+    // spa = ap.tpa.toArray();
+    // ebbrt::kprintf_force("  arp target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+    //                      spa[1], spa[2], spa[3]);
   } else if (ethtype == ebbrt::kEthTypeIp) {
     auto ip = dp.Get<ebbrt::Ipv4Header>();
-    ebbrt::kprintf_force(" 1. IP\n");
-    ebbrt::kprintf_force("  ip proto type 0x%x\n", ip.proto);
-    auto spa = ip.src.toArray();
-    ebbrt::kprintf_force("  ip sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-                         spa[1], spa[2], spa[3]);
-    spa = ip.dst.toArray();
-    ebbrt::kprintf_force("  ip target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-                         spa[1], spa[2], spa[3]);
+    // ebbrt::kprintf_force(" 1. IP\n");
+    // ebbrt::kprintf_force("  ip proto type 0x%x\n", ip.proto);
+    // auto spa = ip.src.toArray();
+    // ebbrt::kprintf_force("  ip sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+    //                      spa[1], spa[2], spa[3]);
+    // spa = ip.dst.toArray();
+    // ebbrt::kprintf_force("  ip target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+    //                      spa[1], spa[2], spa[3]);
     // ebbrt::kprintf_force("  ip checksum 0x%x\n", ip.chksum);
     if (ip.proto == 0x6) {
       ebbrt::kprintf_force(" 2. TCP \n");

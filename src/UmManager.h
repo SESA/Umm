@@ -33,6 +33,16 @@ const uint16_t kSlotPML4Offset = 0x180;
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
+  // TODO HACK XXX DELETEME:
+  std::unique_ptr<UmInstance> umi_;
+  simple_pte* getSlotPDPTRoot();
+
+  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
+  inline bool valid_address(uintptr_t vaddr) {
+    return ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
+  }
+
+
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
   enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
@@ -93,10 +103,7 @@ private:
   }; // UmmStatus
 
   /* Internals */
-  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
-  inline bool valid_address(uintptr_t vaddr) {
-    return ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
-  }
+  // Put trigger_bp_exception back here!
   /* Session specific values */
   UmmStatus status_; // TODO: SlotStatus
   // TODO: Move some of these into the Instance ??? 
@@ -107,13 +114,14 @@ private:
 
   ExceptionFrame caller_restore_frame_; 
   // ExceptionFrame snap_restore_frame_; 
-  std::unique_ptr<UmInstance> umi_;
+  // Put umi_ back here!
   // TODO: Reusables or multi-promises 
-  ebbrt::Promise<UmSV> umi_snapshot_;
+  // ebbrt::Promise<UmSV> umi_snapshot_;
+  ebbrt::Promise<UmSV> *umi_snapshot_;
 
 private:
   simple_pte *getSlotPML4PTE();
-  simple_pte* getSlotPDPTRoot();
+  // Put getslotpdptroot here
   void setSlotPDPTRoot(simple_pte* newRoot);
 };
 
