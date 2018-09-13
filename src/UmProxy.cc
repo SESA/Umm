@@ -8,6 +8,13 @@
 #include "UmProxy.h"
 #include "umm-internal.h"
 
+// DEBUG NETWORK TRACE
+#define DEBUG_PRINT_ETH 0
+#define DEBUG_PRINT_ARP 1
+#define DEBUG_PRINT_IP  0
+#define DEBUG_PRINT_TCP 1
+#define DEBUG_PRINT_UDP 1
+
 void umm::UmProxy::Init() {
   // Setup Ebb translations
   auto lo_dev = new LoopbackDriver();
@@ -51,12 +58,13 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   memcpy((void *)ibuf->MutData(), data, len);
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
-  /// DEBUG OUTPUT
+#ifndef NDEBUG /// DEBUG OUTPUT
   ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
                       (size_t)ebbrt::Cpu::GetMine(),
                    buf->ComputeChainDataLength(),
                    buf->CountChainElements());
   umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif 
 
   // TODO(jmcadden): Send buffer out asynchronously
   // ebbrt::event_manager->SpawnLocal([ this, buf = std::move(buf) ]() { });
@@ -112,12 +120,13 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
     }
   } // end if kNeedsCsum
 
-  /// DEBUG OUTPUT
+#ifndef NDEBUG /// DEBUG OUTPUT
   ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
                       (size_t)ebbrt::Cpu::GetMine(),
                       buf->ComputeChainDataLength(),
                       buf->CountChainElements());
   umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif
 
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
 }
@@ -132,73 +141,77 @@ void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
 
 void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
   auto eh = dp.Get<ebbrt::EthernetHeader>();
-  // ebbrt::kprintf_force(" 0. EtherNet\n");
-  // ebbrt::kprintf_force("  type=0x%x\n", ebbrt::ntohs(eh.type));
-  // ebbrt::kprintf_force("  src_mac=%x:%x:%x:%x:%x:%x\n", eh.src[0], eh.src[1],
-  //                      eh.src[2], eh.src[3], eh.src[4], eh.src[5]);
-  // ebbrt::kprintf_force("  dst_mac=%x:%x:%x:%x:%x:%x\n", eh.dst[0], eh.dst[1],
-  //                      eh.dst[2], eh.dst[3], eh.dst[4], eh.dst[5]);
+#if DEBUG_PRINT_ETH
+   ebbrt::kprintf_force("  eth type=0x%x\n", ebbrt::ntohs(eh.type));
+   ebbrt::kprintf_force("  eth src_mac=%x:%x:%x:%x:%x:%x\n", eh.src[0], eh.src[1],
+                        eh.src[2], eh.src[3], eh.src[4], eh.src[5]);
+   ebbrt::kprintf_force("  eth dst_mac=%x:%x:%x:%x:%x:%x\n", eh.dst[0], eh.dst[1],
+                        eh.dst[2], eh.dst[3], eh.dst[4], eh.dst[5]);
+#endif
   auto ethtype = ebbrt::ntohs(eh.type);
-
   if (ethtype == ebbrt::kEthTypeArp) {
-    // auto ap = dp.Get<ebbrt::ArpPacket>();
-    // ebbrt::kprintf_force(" 1. ARP\n");
-    // ebbrt::kprintf_force("  arp hardware type 0x%x\n", ebbrt::ntohs(ap.htype));
-    // ebbrt::kprintf_force("  arp proto type 0x%x\n", ebbrt::ntohs(ap.ptype));
-    // ebbrt::kprintf_force("  arp opcode 0x%x\n", ebbrt::ntohs(ap.oper));
-    // ebbrt::kprintf_force("  arp sender mac %x:%x:%x:%x:%x:%x\n", ap.sha[0],
-    //                      ap.sha[1], ap.sha[2], ap.sha[3], ap.sha[4], ap.sha[5]);
-    // ebbrt::kprintf_force("  arp target mac %x:%x:%x:%x:%x:%x\n", ap.tha[0],
-    //                      ap.tha[1], ap.tha[2], ap.tha[3], ap.tha[4], ap.tha[5]);
-    // auto spa = ap.spa.toArray();
-    // ebbrt::kprintf_force("  arp sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-    //                      spa[1], spa[2], spa[3]);
-    // spa = ap.tpa.toArray();
-    // ebbrt::kprintf_force("  arp target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-    //                      spa[1], spa[2], spa[3]);
+     auto ap = dp.Get<ebbrt::ArpPacket>();
+#if DEBUG_PRINT_ARP
+     ebbrt::kprintf_force("  arp hardware type 0x%x\n", ebbrt::ntohs(ap.htype));
+     ebbrt::kprintf_force("  arp proto type 0x%x\n", ebbrt::ntohs(ap.ptype));
+     ebbrt::kprintf_force("  arp opcode 0x%x\n", ebbrt::ntohs(ap.oper));
+     ebbrt::kprintf_force("  arp sender mac %x:%x:%x:%x:%x:%x\n", ap.sha[0],
+                          ap.sha[1], ap.sha[2], ap.sha[3], ap.sha[4], ap.sha[5]);
+     ebbrt::kprintf_force("  arp target mac %x:%x:%x:%x:%x:%x\n", ap.tha[0],
+                          ap.tha[1], ap.tha[2], ap.tha[3], ap.tha[4], ap.tha[5]);
+     auto spa = ap.spa.toArray();
+     ebbrt::kprintf_force("  arp sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+                          spa[1], spa[2], spa[3]);
+     spa = ap.tpa.toArray();
+     ebbrt::kprintf_force("  arp target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+                          spa[1], spa[2], spa[3]);
+#endif
   } else if (ethtype == ebbrt::kEthTypeIp) {
     auto ip = dp.Get<ebbrt::Ipv4Header>();
-    // ebbrt::kprintf_force(" 1. IP\n");
-    // ebbrt::kprintf_force("  ip proto type 0x%x\n", ip.proto);
-    // auto spa = ip.src.toArray();
-    // ebbrt::kprintf_force("  ip sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-    //                      spa[1], spa[2], spa[3]);
-    // spa = ip.dst.toArray();
-    // ebbrt::kprintf_force("  ip target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
-    //                      spa[1], spa[2], spa[3]);
-    // ebbrt::kprintf_force("  ip checksum 0x%x\n", ip.chksum);
+#if DEBUG_PRINT_IP
+     ebbrt::kprintf_force("  ip proto type 0x%x\n", ip.proto);
+     auto spa = ip.src.toArray();
+     ebbrt::kprintf_force("  ip sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+                          spa[1], spa[2], spa[3]);
+     spa = ip.dst.toArray();
+     ebbrt::kprintf_force("  ip target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
+                          spa[1], spa[2], spa[3]);
+     ebbrt::kprintf_force("  ip checksum 0x%x\n", ip.chksum);
+#endif
     if (ip.proto == 0x6) {
-      ebbrt::kprintf_force(" 2. TCP \n");
       auto tcp = dp.Get<ebbrt::TcpHeader>();
-      ebbrt::kprintf_force("  src port %d\n", ebbrt::ntohs(tcp.src_port));
-      ebbrt::kprintf_force("  dst port %d\n", ebbrt::ntohs(tcp.dst_port));
-      ebbrt::kprintf_force("  seqno 0x%x\n", ebbrt::ntohl(tcp.seqno));
-      ebbrt::kprintf_force("  ackno 0x%x\n", ebbrt::ntohl(tcp.ackno));
-      ebbrt::kprintf_force("  checksum 0x%x\n", ebbrt::ntohl(tcp.checksum));
-      ebbrt::kprintf_force("  FLAGS 0x%x\n", tcp.Flags());
+#if DEBUG_PRINT_TCP
+      ebbrt::kprintf_force("  tcp src port %d\n", ebbrt::ntohs(tcp.src_port));
+      ebbrt::kprintf_force("  tcp dst port %d\n", ebbrt::ntohs(tcp.dst_port));
+      ebbrt::kprintf_force("  tcp seqno 0x%x\n", ebbrt::ntohl(tcp.seqno));
+      ebbrt::kprintf_force("  tcp ackno 0x%x\n", ebbrt::ntohl(tcp.ackno));
+      ebbrt::kprintf_force("  tcp checksum 0x%x\n", ebbrt::ntohl(tcp.checksum));
+      ebbrt::kprintf_force("  tcp FLAGS 0x%x\n", tcp.Flags());
       if (tcp.Flags() & ebbrt::kTcpFin)
-        ebbrt::kprintf_force("  type FIN\n");
+        ebbrt::kprintf_force("  tcp type FIN\n");
       if (tcp.Flags() & ebbrt::kTcpSyn)
-        ebbrt::kprintf_force("  type SYN\n");
+        ebbrt::kprintf_force("  tcp type SYN\n");
       if (tcp.Flags() & ebbrt::kTcpRst)
-        ebbrt::kprintf_force("  type RST\n");
+        ebbrt::kprintf_force("  tcp type RST\n");
       if (tcp.Flags() & ebbrt::kTcpPsh)
-        ebbrt::kprintf_force("  type PSH\n");
+        ebbrt::kprintf_force("  tcp type PSH\n");
       if (tcp.Flags() & ebbrt::kTcpAck)
-        ebbrt::kprintf_force("  type ACK\n");
+        ebbrt::kprintf_force("  tcp type ACK\n");
       if (tcp.Flags() & ebbrt::kTcpUrg)
-        ebbrt::kprintf_force("  type URG\n");
+        ebbrt::kprintf_force("  tcp type URG\n");
       if (tcp.Flags() & ebbrt::kTcpEce)
-        ebbrt::kprintf_force("  type ECE\n");
+        ebbrt::kprintf_force("  tcp type ECE\n");
       if (tcp.Flags() & ebbrt::kTcpCwr)
-        ebbrt::kprintf_force("  type CWR\n");
+        ebbrt::kprintf_force("  tcp type CWR\n");
+#endif
     } else if (ip.proto == 0x11) {
-      ebbrt::kprintf_force(" 2. UDP \n");
       auto udp = dp.Get<ebbrt::UdpHeader>();
-      ebbrt::kprintf_force("  src port %d\n", ebbrt::ntohs(udp.src_port));
-      ebbrt::kprintf_force("  dst port %d\n", ebbrt::ntohs(udp.dst_port));
-      ebbrt::kprintf_force("  len %d\n", ebbrt::ntohs(udp.length));
-      ebbrt::kprintf_force("  checksum 0x%x\n", ebbrt::ntohs(udp.checksum));
+#if DEBUG_PRINT_UDP
+      ebbrt::kprintf_force("  udp src port %d\n", ebbrt::ntohs(udp.src_port));
+      ebbrt::kprintf_force("  udp dst port %d\n", ebbrt::ntohs(udp.dst_port));
+      ebbrt::kprintf_force("  udp len %d\n", ebbrt::ntohs(udp.length));
+      ebbrt::kprintf_force("  udp checksum 0x%x\n", ebbrt::ntohs(udp.checksum));
+#endif 
     }
   }
 }

@@ -11,6 +11,7 @@
 #include "UmProxy.h"
 
 #include <ebbrt/native/Clock.h>
+#include <ebbrt/Debug.h>
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
@@ -30,7 +31,9 @@ const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.
 static int solo5_hypercall_poll(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_poll *)arg;
   arg_->ret = 0;
+  ebbrt::kprintf(YELLOW "<y" RESET);
   umm::manager->Block(arg_->timeout_nsecs);
+  ebbrt::kprintf(YELLOW "/>" RESET);
   // return from block
   if(umm::proxy->UmHasData()){
     arg_->ret = 1;
@@ -92,7 +95,7 @@ static int solo5_hypercall_netread(volatile void *arg) {
 static int solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
   (void)arg_;
-  ebbrt::kprintf("\nHalting Solo5. Goodbye!\n");
+  ebbrt::kprintf_force("\nHalting Solo5. Goodbye!\n");
   umm::manager->Halt();
   return 0;
 }
