@@ -118,12 +118,14 @@ void umm::UmManager::UmmStatus::set(umm::UmManager::Status new_status) {
       break;
     goto OK;
   case running:
+    // XXX(tommyu) think last case is busted.
     if (s_ != loaded && s_ != snapshot && s_ != blocked && s_)
       break;
     clock_ = ebbrt::clock::Wall::Now(); 
     goto OK;
   case blocked:
-    if (s_ != running ) // Only block when running
+    // XXX HACK (tommyu);
+    if (s_ != running && s_ != blocked ) // Only block when running or blocked?
       break;
     // Log execution time before blocking. We'll resume the clock when running
     runtime_ +=
@@ -269,7 +271,6 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
   // Clear slot PTE.
-  DisableTimers();
 
   // TODO, make sure page table is g2g or reaped.
   slotPML4Ent->clearPTE();
@@ -300,6 +301,8 @@ void umm::UmManager::Halt() {
   // Clear proxy data
   proxy->UmClearData();
   DisableTimers();
+  delete context_;
+  context_ = nullptr;
   trigger_bp_exception();
 }
 
@@ -339,6 +342,9 @@ void umm::UmManager::Fire(){
   if(status() != blocked)
     return;
 
+  if(context_ == nullptr)
+    return;
+
   // We take a single clock reading which we use to simplify some corner cases
   // with respect to enabling the timer. This way there is a single time point
   // when this event occurred and all clock computations can be relative to it.
@@ -352,13 +358,16 @@ void umm::UmManager::Fire(){
     status_.set(running);
     ebbrt::event_manager->ActivateContext(std::move(*context_));
   }
-  //kabort("UmManager timeout error: blocking indefinitley\n");
+  // kabort("UmManager timeout error: blocking indefinitley\n");
 }
 
 void umm::UmManager::Block(size_t ns){
-  kassert(!timer_set);
-  if(!ns)
+  // Maybe just clobber old timer?
+  // kassert(!timer_set);
+  if(!ns){
+    kprintf_force(RED "0" RESET);
     return;
+  }
 
   auto now = ebbrt::clock::Wall::Now();
   time_wait = now + std::chrono::nanoseconds(ns);
@@ -369,12 +378,17 @@ void umm::UmManager::Block(size_t ns){
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
-  if (timer_set)
-    return;
-
-  if (now >= time_wait) {
+  if (timer_set){
+    kprintf_force(RED "T" RESET);
     return;
   }
+
+  if (now >= time_wait) {
+    kprintf_force(YELLOW "T" RESET);
+    return;
+  }
+
+  kprintf_force(GREEN "T" RESET);
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
   ebbrt::timer->Start(*this, duration, /* repeat = */ false);
@@ -385,6 +399,7 @@ void umm::UmManager::DisableTimers(){
   if (timer_set) {
     ebbrt::timer->Stop(*this);
   }
+  kprintf_force(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
 }
