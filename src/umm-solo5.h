@@ -35,7 +35,9 @@ static int solo5_hypercall_poll(volatile void *arg) {
   umm::manager->Block(arg_->timeout_nsecs);
   ebbrt::kprintf(YELLOW "/>" RESET);
   // return from block
+
   if(umm::proxy->UmHasData()){
+    ebbrt::kprintf(YELLOW "HD" RESET);
     arg_->ret = 1;
   }
   return 0;
@@ -91,6 +93,8 @@ static int solo5_hypercall_netread(volatile void *arg) {
   arg_->len = umm::proxy->UmRead(arg_->data, arg_->len);
   // ret is 0 on successful read, 1 otherwise
   arg_->ret = (arg_->len > 0) ? 0 : 1;
+  if(arg_->ret)
+    ebbrt::kprintf_force(RED "READ" RESET);
   return 0;
 }
 

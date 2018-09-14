@@ -384,7 +384,6 @@ void umm::UmManager::Block(size_t ns){
   kprintf(RED "Context saved: %d\n", current_bc);
   ebbrt::event_manager->SaveContext(*context_);
   kprintf(RED "Context restored: %d\n", current_bc);
-
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
