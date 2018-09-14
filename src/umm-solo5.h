@@ -69,7 +69,9 @@ static int solo5_hypercall_netwrite(volatile void *arg) {
   memcpy((void *)buf, arg_->data, arg_->len);
   unsigned long len = arg_->len;
   ebbrt::event_manager->SpawnLocal(
-      [buf,len]() { umm::proxy->UmWrite(const_cast<const void *>(buf), len); }, true);
+      [buf,len]() {
+        ebbrt::kprintf(GREEN "solo5 netwrite\n" RESET);
+        umm::proxy->UmWrite(const_cast<const void *>(buf), len); }, true);
   return 0;
 }
 

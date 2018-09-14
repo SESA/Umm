@@ -112,6 +112,8 @@ private:
   ebbrt::clock::Wall::time_point time_wait; // block until this time
   ebbrt::EventManager::EventContext *context_; // ebbrt event context
 
+  int block_ctr_ = 0;
+
   ExceptionFrame caller_restore_frame_; 
   // ExceptionFrame snap_restore_frame_; 
   // Put umi_ back here!

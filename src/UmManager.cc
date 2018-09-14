@@ -269,7 +269,6 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
   // Clear slot PTE.
-  DisableTimers();
 
   // TODO, make sure page table is g2g or reaped.
   slotPML4Ent->clearPTE();
@@ -293,6 +292,8 @@ void umm::UmManager::runSV() {
 }
 
 void umm::UmManager::Halt() {
+  kprintf_force(GREEN "Calling halt\n" RESET);
+
   kassert(status() != empty);
   // TODO:This might be a little harsh in general, but useful for debugging.
   kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
@@ -300,6 +301,8 @@ void umm::UmManager::Halt() {
   // Clear proxy data
   proxy->UmClearData();
   DisableTimers();
+  delete context_;
+  context_ = nullptr;
   trigger_bp_exception();
 }
 
@@ -332,11 +335,15 @@ ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
 }
 
 void umm::UmManager::Fire(){
+  kprintf(RED "(F)" RESET);
   kassert(timer_set);
   timer_set = false;
 
   // If the instance is not blocked this timeout is stale, ignore it
   if(status() != blocked)
+    return;
+
+  if(context_ == nullptr)
     return;
 
   // We take a single clock reading which we use to simplify some corner cases
@@ -350,31 +357,48 @@ void umm::UmManager::Fire(){
 
     // Unblock instance
     status_.set(running);
+    kprintf("Activating context, block ctr:%d\n", block_ctr_);
+    // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
     ebbrt::event_manager->ActivateContext(std::move(*context_));
+    kprintf("Post activate, block ctr:%d\n", block_ctr_);
   }
-  //kabort("UmManager timeout error: blocking indefinitley\n");
+  kprintf(RED "(FR)" RESET);
+  // kabort("UmManager timeout error: blocking indefinitley\n");
 }
 
 void umm::UmManager::Block(size_t ns){
+  // Maybe just clobber old timer?
   kassert(!timer_set);
-  if(!ns)
+  if(!ns){
+    kprintf_force(RED "0" RESET);
     return;
+  }
 
   auto now = ebbrt::clock::Wall::Now();
   time_wait = now + std::chrono::nanoseconds(ns);
   SetTimer(now);
   status_.set(blocked);
   context_ = new ebbrt::EventManager::EventContext();
+  int current_bc = block_ctr_;
+  block_ctr_++;
+  kprintf(RED "Context saved: %d\n", current_bc);
   ebbrt::event_manager->SaveContext(*context_);
+  kprintf(RED "Context restored: %d\n", current_bc);
+
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
-  if (timer_set)
-    return;
-
-  if (now >= time_wait) {
+  if (timer_set){
+    kprintf_force(RED "T" RESET);
     return;
   }
+
+  if (now >= time_wait) {
+    kprintf_force(YELLOW "T" RESET);
+    return;
+  }
+
+  kprintf_force(GREEN "T" RESET);
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
   ebbrt::timer->Start(*this, duration, /* repeat = */ false);
@@ -385,6 +409,7 @@ void umm::UmManager::DisableTimers(){
   if (timer_set) {
     ebbrt::timer->Stop(*this);
   }
+  kprintf_force(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
 }
