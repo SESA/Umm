@@ -14,7 +14,7 @@
 #include <atomic>
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
-  kprintf_force(MAGENTA "Umm... Taking a snapshot!!!\n" RESET);
+  kprintf(MAGENTA "Umm... Taking a snapshot!!!\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
 
@@ -292,7 +292,17 @@ void umm::UmManager::runSV() {
 }
 
 void umm::UmManager::Halt() {
-  kprintf_force(GREEN "Calling halt\n" RESET);
+  kprintf(GREEN "Calling halt\n" RESET);
+  
+  if(ebbrt::event_manager->QueueLength()){
+    kprintf_force(YELLOW "Attempting to clear (%d) pending events before halting...\n" RESET, ebbrt::event_manager->QueueLength());
+    ebbrt::event_manager->SpawnLocal(
+        [this]() {
+          this->Halt();
+        },
+        true);
+    return;
+  }
 
   kassert(status() != empty);
   // TODO:This might be a little harsh in general, but useful for debugging.
@@ -370,7 +380,7 @@ void umm::UmManager::Block(size_t ns){
   // Maybe just clobber old timer?
   kassert(!timer_set);
   if(!ns){
-    kprintf_force(RED "0" RESET);
+    kprintf(RED "0" RESET);
     return;
   }
 
@@ -383,21 +393,22 @@ void umm::UmManager::Block(size_t ns){
   block_ctr_++;
   kprintf(RED "Context saved: %d\n", current_bc);
   ebbrt::event_manager->SaveContext(*context_);
+  kprintf(RED "Context restored...\n");
   kprintf(RED "Context restored: %d\n", current_bc);
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
   if (timer_set){
-    kprintf_force(RED "T" RESET);
+    kprintf(RED "T" RESET);
     return;
   }
 
   if (now >= time_wait) {
-    kprintf_force(YELLOW "T" RESET);
+    kprintf(YELLOW "T" RESET);
     return;
   }
 
-  kprintf_force(GREEN "T" RESET);
+  kprintf(GREEN "T" RESET);
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
   ebbrt::timer->Start(*this, duration, /* repeat = */ false);
@@ -408,7 +419,7 @@ void umm::UmManager::DisableTimers(){
   if (timer_set) {
     ebbrt::timer->Stop(*this);
   }
-  kprintf_force(RED "Disable timers....\n" RESET);
+  kprintf(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
 }
