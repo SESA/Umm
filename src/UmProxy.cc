@@ -10,10 +10,10 @@
 
 // DEBUG NETWORK TRACE
 #define DEBUG_PRINT_ETH 0
-#define DEBUG_PRINT_ARP 1
+#define DEBUG_PRINT_ARP 0
 #define DEBUG_PRINT_IP  0
 #define DEBUG_PRINT_TCP 1
-#define DEBUG_PRINT_UDP 1
+#define DEBUG_PRINT_UDP 0
 
 void umm::UmProxy::Init() {
   // Setup Ebb translations
@@ -93,7 +93,6 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   if (pinfo.flags & ebbrt::PacketInfo::kNeedsCsum) {
     if (pinfo.csum_offset == 6) { // UDP
       /* UDP header checksum is optional so we clear the value */
-      ebbrt::kprintf_force("WARNING: UDP PACKET (lo->umi) NEED CHECKSUM!\n");
       kabort("UDP checksum not yet supported\n");
       buf->Advance(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
       auto mbuf = static_cast<ebbrt::MutIOBuf *>(buf.release());
@@ -150,8 +149,8 @@ void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
 #endif
   auto ethtype = ebbrt::ntohs(eh.type);
   if (ethtype == ebbrt::kEthTypeArp) {
-     auto ap = dp.Get<ebbrt::ArpPacket>();
 #if DEBUG_PRINT_ARP
+     auto ap = dp.GetNoAdvance<ebbrt::ArpPacket>();
      ebbrt::kprintf_force("  arp hardware type 0x%x\n", ebbrt::ntohs(ap.htype));
      ebbrt::kprintf_force("  arp proto type 0x%x\n", ebbrt::ntohs(ap.ptype));
      ebbrt::kprintf_force("  arp opcode 0x%x\n", ebbrt::ntohs(ap.oper));
@@ -166,9 +165,11 @@ void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
      ebbrt::kprintf_force("  arp target ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
                           spa[1], spa[2], spa[3]);
 #endif
+     dp.Advance(sizeof(ebbrt::ArpPacket));
   } else if (ethtype == ebbrt::kEthTypeIp) {
     auto ip = dp.Get<ebbrt::Ipv4Header>();
 #if DEBUG_PRINT_IP
+
      ebbrt::kprintf_force("  ip proto type 0x%x\n", ip.proto);
      auto spa = ip.src.toArray();
      ebbrt::kprintf_force("  ip sender ip %hhd.%hhd.%hhd.%hhd \n", spa[0],
@@ -179,8 +180,8 @@ void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
      ebbrt::kprintf_force("  ip checksum 0x%x\n", ip.chksum);
 #endif
     if (ip.proto == 0x6) {
-      auto tcp = dp.Get<ebbrt::TcpHeader>();
 #if DEBUG_PRINT_TCP
+      auto tcp = dp.GetNoAdvance<ebbrt::TcpHeader>();
       ebbrt::kprintf_force("  tcp src port %d\n", ebbrt::ntohs(tcp.src_port));
       ebbrt::kprintf_force("  tcp dst port %d\n", ebbrt::ntohs(tcp.dst_port));
       ebbrt::kprintf_force("  tcp seqno 0x%x\n", ebbrt::ntohl(tcp.seqno));
@@ -204,13 +205,15 @@ void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
       if (tcp.Flags() & ebbrt::kTcpCwr)
         ebbrt::kprintf_force("  tcp type CWR\n");
 #endif
+     dp.Advance(sizeof(ebbrt::TcpHeader));
     } else if (ip.proto == 0x11) {
-      auto udp = dp.Get<ebbrt::UdpHeader>();
 #if DEBUG_PRINT_UDP
+      auto udp = dp.Get<ebbrt::UdpHeader>();
       ebbrt::kprintf_force("  udp src port %d\n", ebbrt::ntohs(udp.src_port));
       ebbrt::kprintf_force("  udp dst port %d\n", ebbrt::ntohs(udp.dst_port));
       ebbrt::kprintf_force("  udp len %d\n", ebbrt::ntohs(udp.length));
       ebbrt::kprintf_force("  udp checksum 0x%x\n", ebbrt::ntohs(udp.checksum));
+     dp.Advance(sizeof(ebbrt::UdpHeader));
 #endif 
     }
   }

@@ -286,7 +286,7 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
 
 void umm::UmManager::runSV() {
   kassert(status() == loaded);
-  kprintf_force(GREEN "Umm... Deploying SV on core #%d\n" RESET,
+  kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
   trigger_bp_exception();
 }
@@ -306,7 +306,7 @@ void umm::UmManager::Halt() {
 
   kassert(status() != empty);
   // TODO:This might be a little harsh in general, but useful for debugging.
-  kprintf_force(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
+  kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
   // Clear proxy data
   proxy->UmClearData();
