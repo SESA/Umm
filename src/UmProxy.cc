@@ -11,7 +11,7 @@
 // DEBUG NETWORK TRACE
 #define DEBUG_PRINT_ETH 0
 #define DEBUG_PRINT_ARP 0
-#define DEBUG_PRINT_IP  0
+#define DEBUG_PRINT_IP  1
 #define DEBUG_PRINT_TCP 1
 #define DEBUG_PRINT_UDP 0
 
@@ -22,8 +22,7 @@ void umm::UmProxy::Init() {
 }
 
 ebbrt::EthernetAddress umm::UmProxy::UmMac() {
-  size_t core = ebbrt::Cpu::GetMine();
-  return {{0x06, 0xfe, 0x00, 0x00, 0x00, (uint8_t)core}};
+  return {{0x06, 0xfe, 0x04, 0x03, 0x02, 0x01}};
 }
 
 umm::LoopbackDriver::LoopbackDriver()
@@ -84,6 +83,7 @@ uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
   kassert(len >= in_len);
   auto dp = buf->GetDataPointer();
   dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
+  kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
   return in_len;
 }
 
@@ -132,6 +132,7 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
 
 void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
                            ebbrt::PacketInfo pinfo) {
+  kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
   // Queue network data to be read into the UM instance (via UmRead)
   if (!buf->ComputeChainDataLength())
     return;
