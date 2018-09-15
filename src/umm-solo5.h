@@ -119,7 +119,7 @@ static int solo5_hypercall_walltime(volatile void *arg) {
 static int solo5_hypercall_puts(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_puts *)arg;
   for (unsigned int i = 0; i < arg_->len; i++)
-    ebbrt::kprintf_force("%c", arg_->data[i]);
+    ebbrt::kprintf("%c", arg_->data[i]);
   return 0;
 }
 
