@@ -8,8 +8,6 @@
 #include "stdint.h"
 #include <functional>
 
-#define printf ebbrt::kprintf_force
-
 #define SMALL_PG_SHIFT 12
 #define MED_PG_SHIFT 21
 #define LG_PG_SHIFT 30

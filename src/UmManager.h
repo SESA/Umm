@@ -20,6 +20,12 @@
 #include "umm-common.h"
 #include "util/x86_64.h"
 
+#define PERF 1
+#if PERF
+#include <ebbrt/native/Perf.h>
+#include "Counter.h"
+#endif
+
 namespace umm {
 
 /* Execution slot constants */ 
@@ -33,7 +39,13 @@ const uint16_t kSlotPML4Offset = 0x180;
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
+
+#if PERF
+  Counter ctr;
+#endif
+
   // TODO HACK XXX DELETEME:
+  uint64_t pg_ft_count;
   std::unique_ptr<UmInstance> umi_;
   simple_pte* getSlotPDPTRoot();
 

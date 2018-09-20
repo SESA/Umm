@@ -4,6 +4,7 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "UmPth.h"
+#include "UmManager.h"
 #include "UmPgTblMgr.h"
 #include "umm-internal.h"
 
@@ -17,7 +18,15 @@ UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {
   UmPth::~UmPth(){
     if (root_ != nullptr){
       kprintf(YELLOW "Reclaiming page table.\n" RESET);
+
+#if PTH_PERF
+      auto a = umm::manager->ctr.CreateTimeRecord(std::string("free pt"));
+#endif
       UmPgTblMgmt::freePageTableLamb(root_, lvl_);
+#if PTH_PERF
+      umm::manager->ctr.add_to_list(a);
+#endif
+
     }
   }
 
@@ -35,7 +44,17 @@ UmPth& UmPth::operator=(const UmPth& rhs){
     // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(rhs.root_), PDPT_LEVEL);
     // kprintf_force(YELLOW "COW for inst~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
 
+#if PTH_PERF
+    // kprintf_force("Create record\n");
+    auto a = umm::manager->ctr.CreateTimeRecord(std::string("COW PT Setup"));
+#endif
+
     root_ = UmPgTblMgmt::walkPgTblCOW(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
+
+#if PTH_PERF
+    // kprintf_force("Add to list\n");
+    umm::manager->ctr.add_to_list(a);
+#endif
     // printMappedPagesCount(root_);
 
     // simple_pte* tmp = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
@@ -80,8 +99,6 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
 
   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
   UmPgTblMgmt::countValidPagesLamb(counts, root_, lvl_);
-  kprintf(CYAN "Copied: %lu dirty 4k pages", counts[_4K__]);
-  kprintf(" in (%dms)\n" RESET, std::chrono::duration_cast<std::chrono::milliseconds>(stop - start));
 
   kassert(root_ != nullptr);
 }

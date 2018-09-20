@@ -33,7 +33,7 @@ UmSV::GetRegionByName(const char* p){
     if(! strcmp(p, it.name.c_str()))
       return it;
   }
-  printf("A region by that name doesn't exist.\n");
+  kprintf_force("A region by that name doesn't exist.\n");
   kabort();
 }
 

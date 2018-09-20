@@ -44,7 +44,7 @@ public:
     // Avoid GeneralProtectionException on CS register.
     ef.cs = 0x8;
 
-    // ebbrt::kprintf(GREEN "CONS\n" RESET);
+    // kprintf(GREEN "CONS\n" RESET);
   }
 
   // Delegating constructor to default.
@@ -54,7 +54,7 @@ public:
     region_list_ = rhs.region_list_;
     ef = rhs.ef;
     pth = rhs.pth;
-    // ebbrt::kprintf(GREEN "Copy cons.\n" RESET);
+    // kprintf(GREEN "Copy cons.\n" RESET);
   }
 
   void SetEntry(uintptr_t paddr);

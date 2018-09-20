@@ -8,6 +8,8 @@
 #include "umm-common.h"
 #include "UmPgTblMgr.h"
 
+#define PTH_PERF 0
+
 namespace umm {
 
 /** 

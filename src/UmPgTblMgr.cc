@@ -5,16 +5,14 @@
 
 #include <ebbrt/native/Clock.h>
 #include <ebbrt/native/PageAllocator.h>
-// #include <ebbrt/native/Pfn.h>
-#include <unordered_map>
-// #include "../../../EbbRT/src/native/Perf.h"
-#include "umm-common.h"
+#include <ebbrt/native/Pfn.h>
 #include "umm-internal.h"
 
+#include "UmManager.h"  // hack to get per core copied pages count.
 #include "UmPgTblMgr.h"
-// #include <Umm.h>
 #include <vector>
-// #include <inttypes.h>
+
+#define printf kprintf
 
 const unsigned char orders[] = {0, SMALL_ORDER, MEDIUM_ORDER, LARGE_ORDER};
 
@@ -28,7 +26,6 @@ const char* level_names[] = {"NO_LEVEL",
                              "PDPT_LEVEL",
                              "PML4_LEVEL"};
 
-// #define printf ebbrt::kprintf
 
 // TODO(tommyu): Is this ok usage?
 using namespace umm;
@@ -78,7 +75,7 @@ void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
 }
 
 void UmPgTblMgmt::doubleCacheInvalidate(simple_pte *root, uint8_t lvl){
-  kprintf("Flushing translation caches two ways\n");
+  printf("Flushing translation caches two ways\n");
   cacheInvalidateValidPagesLamb(root, lvl);
   flushTranslationCaches();
 }
@@ -970,9 +967,6 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyHelper(simple_pte *root,
         // TODO(tommyu) is there a better way?
         // Reconstruct page Lin Addr.
         lin_addr virt = reconstructLinAddrPgFromOffsets(idx);
-
-        // Super useful
-        // kprintf_force(GREEN "C" RESET);
 
         copy = mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL, true);
       }
