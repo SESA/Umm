@@ -22,7 +22,8 @@ void umm::UmProxy::Init() {
 }
 
 ebbrt::EthernetAddress umm::UmProxy::UmMac() {
-  return {{0x06, 0xfe, 0x04, 0x03, 0x02, 0x01}};
+  size_t core = ebbrt::Cpu::GetMine();
+  return {{0x06, 0xfe, 0x00, 0x00, 0x00, (uint8_t)core}};
 }
 
 umm::LoopbackDriver::LoopbackDriver()
