@@ -179,12 +179,39 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
   umm::manager->process_pagefault(ef, addr);
 }
 
+void PrintErrorCode(x86_64::PgFaultErrorCode ec){
+
+  // Green if present, else red.
+  // if(ec.P){
+  //   kprintf_force(GREEN);
+  // }else{
+  //   kprintf_force(RED);
+  // }
+
+  // Write or Read?
+  if(ec.WR){
+    kprintf_force(RED "W");
+  } else {
+    kprintf_force(YELLOW "R");
+  }
+
+  // if(ec.ID){
+  //   kprintf_force(GREEN "I");
+  // }
+
+  kprintf_force(RESET);
+}
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(status() == snapshot)
     kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
+
   kassert(status() != empty);
   kassert(valid_address(vaddr));
+
+  x86_64::PgFaultErrorCode ec;
+  ec.val = ef->error_code;
+  PrintErrorCode(ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -192,9 +219,16 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   virt.raw = virtual_page_addr;
 
   /* Pass to the mounted sv to select/allocate the backing page */
-  auto physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
+  uintptr_t physical_start_addr = 0;
+  if(ec.P == 1){
+    kprintf_force("Copy on write a page!\n");
+    physical_start_addr = umi_->GetBackingPageCOW(virtual_page_addr);
+  } else{
+    physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
+  }
   lin_addr phys;
   phys.raw = physical_start_addr;
+  kassert(physical_start_addr != 0);
 
   /* Map backing page into core's page tables */
   // Get PML4[0x180].
@@ -205,19 +239,30 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
   simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
 
+  bool writeFault = (ec.WR) ? true : false;
+  kprintf_force(" \(%#llx => %p)", vaddr, physical_start_addr);
+  kprintf_force("\t\t write fault? %s, error code %x\t", ec.WR ? "yes" : "no", ec.val );
+
+
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry.
+    kprintf_force(RED "Mapping to null pt\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
-                                         TBL_LEVEL, PDPT_LEVEL);
+                                          TBL_LEVEL, PDPT_LEVEL, writeFault);
 
     // "Install". Set accessed in case a walker strides accessed pages.
     slotRoot->setPte(pdpt, false, true);
 
   } else {
     // Slot root holds ptr to sub PT.
+    kprintf_force(RED "Mapping to pt root %p\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
-                             phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL);
+                              phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL, writeFault);
   }
+  if(vaddr == 0xffffc000000014a0 ){
+    umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
+  }
+  kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
@@ -254,6 +299,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
     kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
+    kprintf("Slot root is %p\n", pdptRoot);
     kassert(pdptRoot != nullptr);
   }
 

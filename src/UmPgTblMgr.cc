@@ -320,6 +320,7 @@ void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
     if(isLeaf(root + i,lvl)){
       alignToLvl(lvl);
       printf(RED "%d -> %p\n" RESET, i, (root+i)->pageTabEntToAddr(lvl));
+      (root+i)->printCommon();
     } else {
       alignToLvl(lvl);
       printf(CYAN "%d ->\n" RESET, i);
@@ -557,12 +558,12 @@ void simple_pte::printBits(uint64_t val, int len) {
     return;
   for (len = len - 1; len > 0; len--) {
     if (val & (1ULL << len))
-      printf("1 ");
+      printf(RED "1 " RESET);
     else
       printf("0 ");
   }
   if (val & (1ULL << len))
-    printf("1");
+    printf(RED "1" RESET);
   else
     printf("0");
 }
@@ -572,17 +573,17 @@ void simple_pte::printCommon() {
   printf("\t|       Reserved        |               2M          Address of PTE Table              |               |A| IGN |G|A|D|A|C|W|/|/|E|\n");
   printf("\t|                       |                                  4K                                         |T|     | |P| | |D|T|S|W|L|\n");
   printf("\t|");
-  printBits(decompCommon.RES, 12); printf("|");
+  printBits(decompCommon.RES,         12); printf("|");
   printBits(decompCommon.PG_TBL_ADDR, 40); printf("|");
-  printBits(decompCommon.WHOCARES2, 4); printf("|");
-  printBits(decompCommon.MAPS, 1); printf("|");
-  printBits(decompCommon.DIRTY, 1); printf("|");
-  printBits(decompCommon.A, 1); printf("|");
-  printBits(decompCommon.PCD, 1); printf("|");
-  printBits(decompCommon.PWT, 1); printf("|");
-  printBits(decompCommon.US, 1); printf("|");
-  printBits(decompCommon.RW, 1); printf("|");
-  printBits(decompCommon.SEL, 1); printf("|\n");
+  printBits(decompCommon.WHOCARES2,   4); printf("|");
+  printBits(decompCommon.MAPS,        1); printf("|");
+  printBits(decompCommon.DIRTY,       1); printf("|");
+  printBits(decompCommon.A,           1); printf("|");
+  printBits(decompCommon.PCD,         1); printf("|");
+  printBits(decompCommon.PWT,         1); printf("|");
+  printBits(decompCommon.US,          1); printf("|");
+  printBits(decompCommon.RW,          1); printf("|");
+  printBits(decompCommon.SEL,         1); printf("|\n");
   underlineNibbles();
   printNibblesHex();
 }
@@ -738,16 +739,24 @@ bool UmPgTblMgmt::isLeaf(simple_pte *pte, unsigned char lvl){
   return false;
 }
 
+simple_pte * UmPgTblMgmt::walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8_t lvl) {
+  // Entry 0 is bogus and unused
+  // HACK(tommyu): trying to get off the ground.
+  uint64_t idx[5] = {0};
+  // HACK(tommyu): This is actually critical.
+  idx[4] = SLOT_PML4_NUM;
+  return walkPgTblCOWHelper(root, copy, lvl, idx);
+}
+
 simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl) {
   // Entry 0 is bogus and unused
-
   // HACK(tommyu): trying to get off the ground.
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
   return walkPgTblCopyDirtyHelper(root, copy, lvl, idx);
-
 }
+
 simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy) {
   // Entry 0 is bogus and unused
 
@@ -814,7 +823,8 @@ void simple_pte::clearPTE(){
 
 void simple_pte::setPte(simple_pte *tab,
                         bool dirty /*= false*/,
-                        bool acc /*= false*/){
+                        bool acc   /*= false*/,
+                        bool rw    /*= true*/){
 
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
@@ -822,9 +832,9 @@ void simple_pte::setPte(simple_pte *tab,
   // printf("Addr is %p\n", tab);
 
   simple_pte pte; pte.raw = 0;
-  pte.decompCommon.SEL = 1;
-  pte.decompCommon.RW = 1;
-  pte.decompCommon.A = (acc) ? 1 : 0;
+  pte.decompCommon.SEL   = 1;
+  pte.decompCommon.RW    = (rw)    ? 1 : 0;
+  pte.decompCommon.A     = (acc)   ? 1 : 0;
   pte.decompCommon.DIRTY = (dirty) ? 1 : 0;
 
   pte.decompCommon.PG_TBL_ADDR = (uint64_t)tab >> 12;
@@ -835,14 +845,14 @@ void simple_pte::setPte(simple_pte *tab,
 simple_pte *UmPgTblMgmt::mapIntoPgTbl(simple_pte *root, lin_addr phys,
                                       lin_addr virt, unsigned char rootLvl,
                                       unsigned char mapLvl,
-                                      unsigned char curLvl) {
-  return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl);
+                                      unsigned char curLvl, bool writeFault) {
+  return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl, writeFault);
 }
 
 simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                             lin_addr virt, unsigned char rootLvl,
                                             unsigned char mapLvl,
-                                            unsigned char curLvl) {
+                                            unsigned char curLvl, bool writeFault) {
   kassert(rootLvl >= mapLvl);
   kassert(rootLvl >= curLvl);
   kassert(rootLvl <= PML4_LEVEL && rootLvl >= TBL_LEVEL);
@@ -863,13 +873,55 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   if (curLvl == mapLvl) {
     // We're in the table, modify the entry & importantly mark it dirty.
     // TODO: Should this always be marked accessed? Def in copy dirty.
-    pte_ptr->setPte((simple_pte *)phys.raw, true, true);
+    printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
+    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true);
   } else {
     if (exists(pte_ptr)) {
-      mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1);
+      mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
     } else {
       simple_pte *ret =
-        mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1);
+        mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
+      // Dirty bit doesn't apply, accessed does.
+      pte_ptr->setPte(ret, false, true);
+    }
+  }
+  return root;
+}
+
+// HACK: Lots of copy pasta.
+simple_pte *UmPgTblMgmt::findAndSetPTECOW(simple_pte *root, simple_pte *origPte,
+                                           lin_addr virt, unsigned char rootLvl,
+                                           unsigned char mapLvl,
+                                           unsigned char curLvl) {
+  kassert(rootLvl >= mapLvl);
+  kassert(rootLvl >= curLvl);
+  kassert(rootLvl <= PML4_LEVEL && rootLvl >= TBL_LEVEL);
+  kassert(mapLvl <= PDPT_LEVEL);
+
+  // No pg table here, need to allocate.
+  if (root == nullptr) {
+    auto page = ebbrt::page_allocator->Alloc();
+    kbugon(page == Pfn::None());
+    auto page_addr = page.ToAddr();
+    // Set all invalid.
+    memset((void *)page_addr, 0, pgBytes[TBL_LEVEL]);
+    root = (simple_pte *)page_addr;
+  }
+
+  // Get offset using custom indexing operator.
+  simple_pte *pte_ptr = root + virt[curLvl];
+  // Gotta do a mapping
+  if (curLvl == mapLvl) {
+    // We're in the table, modify the entry & importantly mark it dirty.
+    // TODO: Should this always be marked accessed? Def in copy dirty.
+    // NOTE: Setting read only access.
+    pte_ptr->setPte((simple_pte *) origPte->pageTabEntToAddr(TBL_LEVEL).raw, true, true, false);
+  } else {
+    if (exists(pte_ptr)) {
+      findAndSetPTECOW(nextTableOrFrame(pte_ptr, 0, curLvl), origPte, virt, rootLvl, mapLvl, curLvl - 1);
+    } else {
+      simple_pte *ret =
+        findAndSetPTECOW(nullptr, origPte, virt, rootLvl, mapLvl, curLvl - 1);
       // Dirty bit doesn't apply, accessed does.
       pte_ptr->setPte(ret, false, true);
     }
@@ -903,11 +955,59 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyHelper(simple_pte *root,
         // Reconstruct page Lin Addr.
         lin_addr virt = reconstructLinAddrPgFromOffsets(idx);
 
-        copy = mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL);
+        // Super useful
+        // kprintf_force(GREEN "C" RESET);
+
+        copy = mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL, true);
       }
     } else {
       // Don't alter your own root, or you will break on the next goaround.
       copy = walkPgTblCopyDirtyHelper(nextTableOrFrame(root, i, lvl),
+                                      copy, lvl - 1, idx);
+    }
+  }
+  return copy;
+}
+
+simple_pte *UmPgTblMgmt::walkPgTblCOWHelper(simple_pte *root,
+                                                 simple_pte *copy,
+                                                 unsigned char lvl,
+                                                 uint64_t *idx) {
+  // HACK(tommyu): This is a dirty hack to reconstruct the linear addr that got
+  // you to this dirty page. I think we can do better.
+  // Scan all 512 entries, if predicate holds, recurse.
+  for (int i = 0; i < 512; i++) {
+    if (!exists(root + i))
+      continue;
+    idx[lvl] = i;
+
+    if (isLeaf(root + i, lvl)) {
+      // Higher NYI
+      kassert(lvl == 1);
+      if ((root + i)->decompCommon.DIRTY) {
+        // TODO: I think we can do this for all pages, not just dirty.
+
+        // Allocate new page and make copy.
+        // lin_addr backing;
+        // backing.raw = (root + i)->pageTabEntToAddr(lvl).raw;
+        // Copy onto new page.
+        // lin_addr phys = copyDirtyPage(backing, lvl);
+
+        // TODO(tommyu) is there a better way?
+        // Reconstruct page Lin Addr.
+        lin_addr virt = reconstructLinAddrPgFromOffsets(idx);
+
+        // Super useful
+        // kprintf_force(GREEN "C" RESET);
+
+        // copy = mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL);
+        simple_pte *thisPte = root + i;
+        copy = findAndSetPTECOW(copy, thisPte, virt, PDPT_LEVEL, lvl, PDPT_LEVEL);
+
+      }
+    } else {
+      // Don't alter your own root, or you will break on the next goaround.
+      copy = walkPgTblCOWHelper(nextTableOrFrame(root, i, lvl),
                                       copy, lvl - 1, idx);
     }
   }

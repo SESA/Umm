@@ -95,7 +95,7 @@ class simple_pte {
   lin_addr cr3ToAddr();
   void printCommon();
   // Set address field of PTE. Optionally dirty bit and accessed bit.
-  void setPte(simple_pte *tab, bool dirty = false, bool acc = false);
+  void setPte(simple_pte *tab, bool dirty = false, bool acc = false, bool rw = true);
   void clearPTE();
 private:
   void printBits(uint64_t val, int len);
@@ -172,8 +172,11 @@ namespace UmPgTblMgmt {
   uintptr_t injectOffset(lin_addr la, unsigned char lvl);
 
   // Copiers
+  simple_pte * walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8_t lvl);
+
   simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
   simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl);
+
 
   // Extractors
   simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
@@ -185,7 +188,7 @@ namespace UmPgTblMgmt {
   // Mappers
   simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
                            lin_addr virt, unsigned char rootLvl,
-                           unsigned char mapLvl, unsigned char curLvl);
+                           unsigned char mapLvl, unsigned char curLvl, bool writeFault);
 
   // Root Getters
   simple_pte *getSlotPDPTRoot();
@@ -262,7 +265,10 @@ namespace UmPgTblMgmt {
   // Mapper.
    simple_pte *mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                         lin_addr virt, unsigned char rootLvl,
-                                        unsigned char mapLvl, unsigned char curLvl);
+                                  unsigned char mapLvl, unsigned char curLvl, bool writeFault);
+  simple_pte *findAndSetPTECOW(simple_pte *root, simple_pte *origPte,
+                                 lin_addr virt, unsigned char rootLvl,
+                                 unsigned char mapLvl, unsigned char curLvl);
 
 
   // Counter Helpers
@@ -282,10 +288,14 @@ namespace UmPgTblMgmt {
   lin_addr cr3ToAddr();
    simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
                                unsigned char lvl);
-   simple_pte *walkPgTblCopyDirtyHelper(simple_pte *root,
+   simple_pte *walkPgTblCOWHelper(simple_pte *root,
                                               simple_pte *copy,
                                               unsigned char lvl,
                                               uint64_t *idx);
+  simple_pte *walkPgTblCopyDirtyHelper(simple_pte *root,
+                                 simple_pte *copy,
+                                 unsigned char lvl,
+                                 uint64_t *idx);
 
    lin_addr getPhysAddrRecHelper(lin_addr la, simple_pte *root, unsigned char lvl);
   bool exists (simple_pte *pte);

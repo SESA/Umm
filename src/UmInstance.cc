@@ -61,3 +61,22 @@ uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
 
   return bp_start_addr;
 }
+
+uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
+  umm::Region& reg = sv_.GetRegionOfAddr(vaddr);
+  reg.count++;
+
+  // TODO(jmcadden): Support large pages per-region
+  kassert(reg.page_order == 0);
+
+  /* Allocate new physical page for the faulted region */
+  Pfn backing_page = ebbrt::page_allocator->Alloc();
+  page_count++;
+  auto bp_start_addr = backing_page.ToAddr();
+
+  // Copy data on that page. Remember vaddr is still old write protected page.
+  kprintf_force(MAGENTA "Copy dst %p, src %p!" RESET, bp_start_addr, vaddr);
+  std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
+
+  return bp_start_addr;
+}

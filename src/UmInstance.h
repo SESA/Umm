@@ -31,6 +31,7 @@ public:
 
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
+  uintptr_t GetBackingPageCOW(uintptr_t vaddr);
 
   // TODO(jmcadden): Move this interface into the UmSV
   void SetArguments(const uint64_t argc, const char* argv[]=nullptr);
