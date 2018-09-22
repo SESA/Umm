@@ -33,7 +33,7 @@ uintptr_t umm::ElfLoader::GetSymbolAddress(const char *sym) {
   return 0;
 }
 
-umm::UmSV
+umm::UmSV &
 umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
 
   // Get location of elf header from input binary blob
@@ -47,7 +47,7 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
   // Create state structure to return from the call
   kprintf(YELLOW "About to construct sv in elf loader\n" RESET);
 
-  UmSV ret_state(eh->e_entry);
+  UmSV& ret_state = *(new UmSV(eh->e_entry));
 
   // Load the section header from the elf
   Shdr *sht = (Shdr *)((char *)eh + eh->e_shoff);
@@ -148,6 +148,6 @@ umm::ElfLoader::createSVFromElf(unsigned char *elf_start) {
   ret_state.AddRegion(usr_reg);
 
 
-  kprintf("ELF loader done.\n");
+  // kprintf("ELF loader done.\n");
   return ret_state;
 }
