@@ -66,6 +66,26 @@ typedef struct {
   // 17.2.4 Debug Control Register (DR7)
   enum RW_VALUES { INEXECUTION = 0, DATAWRITE = 1, IORW = 2, DATARW = 3 };
 } DR7;
+
+  // Pg fault error code (Vol 3A, Fig 4-12).
+  typedef struct {
+    union {
+      uint64_t val;
+      struct {
+        uint64_t
+            P    : 1, // 0 == not present, 1== page protection
+            WR   : 1, // rd or wr (0==read)
+            US   : 1, // usr super
+            RES0 : 1, // Reserved
+            ID   : 1, // ins fetch == 1
+            PK   : 1, // key
+            RES1 : 9,
+            SGX  : 1,
+            RES2 : 16 + 32;
+          } __attribute__((packed));
+    };
+  } PgFaultErrorCode;
+
 } // namespace x86_64
 
 #endif // UTIL_X86_64_H_ 
