@@ -155,8 +155,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   set_status(snapshot);
 
-  kprintf(BLUE "Creating SV for snapshot!!!\n" RESET);
-  auto snap_sv = new UmSV();
+  UmSV* snap_sv = new UmSV();
   snap_sv->ef = *ef;
 
   // Populate region list.
@@ -171,7 +170,7 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
 
   // Save the snapshot and resume execution of the instance
   // This will synchronously execute a future->Then( lambda ) 
-  umi_snapshot_->SetValue(*snap_sv);
+  umi_snapshot_->SetValue(snap_sv);
   set_status(running);
 }
 
@@ -316,7 +315,7 @@ void umm::UmManager::Halt() {
   trigger_bp_exception();
 }
 
-ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
+ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   kassert(valid_address(vaddr));
 
   x86_64::DR7 dr7;
@@ -340,7 +339,7 @@ ebbrt::Future<umm::UmSV> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   dr7.set();
 
   // TODO: leak
-  umi_snapshot_ = new ebbrt::Promise<umm::UmSV>();
+  umi_snapshot_ = new ebbrt::Promise<umm::UmSV*>();
   return umi_snapshot_->GetFuture();
 }
 

@@ -67,7 +67,7 @@ public:
   void Halt();
 
   /** Extract an SV at a given symbol */
-  ebbrt::Future<UmSV> SetCheckpoint(uintptr_t vaddr);
+  ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
 
   /** Remove instance from core */
   std::unique_ptr<UmInstance> Unload();
@@ -119,7 +119,7 @@ private:
   // Put umi_ back here!
   // TODO: Reusables or multi-promises 
   // ebbrt::Promise<UmSV> umi_snapshot_;
-  ebbrt::Promise<UmSV> *umi_snapshot_;
+  ebbrt::Promise<UmSV*> *umi_snapshot_;
 
 private:
   simple_pte *getSlotPML4PTE();
