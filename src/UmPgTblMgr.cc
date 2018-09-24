@@ -43,11 +43,15 @@ UmPgTblMgmt::beforeRetFn nullBRetFn = nullBRFn;
 void UmPgTblMgmt::freePageTableLamb(simple_pte *root, unsigned char lvl){
   // Free leaves.
   auto leafFn = [](simple_pte *curPte, uint8_t lvl){
+    // NOTE: Rule we use here is only free page if you have write access!!!
+    if( curPte->decompCommon.RW == 1){
     ebbrt::Pfn myPFN = ebbrt::Pfn::Down(curPte->pageTabEntToAddr(lvl).raw);
     // kprintf(RED "Free physical page at %p\n" RESET, myPFN.ToAddr());
 
     kassert(orders[lvl] == 0);
+
     ebbrt::page_allocator->Free(myPFN, orders[lvl]);
+    }
   };
 
   // Free tables.

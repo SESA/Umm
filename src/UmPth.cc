@@ -33,7 +33,7 @@ UmPth& UmPth::operator=(const UmPth& rhs){
   if(rhs.root_ != nullptr){
     // kprintf_force(YELLOW "Dump rhs sv again~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
     // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(rhs.root_), PDPT_LEVEL);
-    kprintf_force(YELLOW "COW for inst~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
+    // kprintf_force(YELLOW "COW for inst~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
 
     root_ = UmPgTblMgmt::walkPgTblCOW(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
     // printMappedPagesCount(root_);

@@ -216,7 +216,7 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
-  PrintErrorCode(ec);
+  // PrintErrorCode(ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -305,7 +305,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
     kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
-    kprintf("Slot root is %p\n", pdptRoot);
+    // kprintf("Slot root is %p\n", pdptRoot);
     kassert(pdptRoot != nullptr);
   }
 

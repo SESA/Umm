@@ -60,6 +60,6 @@ void loadFromSnapTest(int numRuns){
 void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
-  loadFromSnapTest(1);
+  loadFromSnapTest(1<<12);
 
 }
