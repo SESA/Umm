@@ -75,8 +75,9 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
   auto bp_start_addr = backing_page.ToAddr();
 
   // Copy data on that page. Remember vaddr is still old write protected page.
-  kprintf_force(MAGENTA "Copy dst %p, src %p!" RESET, bp_start_addr, vaddr);
+  // kprintf_force(MAGENTA "Copy dst %p, src %p!" RESET, bp_start_addr, vaddr);
   std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
+
 
   return bp_start_addr;
 }

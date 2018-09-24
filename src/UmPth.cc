@@ -31,13 +31,21 @@ UmPth& UmPth::operator=(const UmPth& rhs){
   // Deep copy dirty pages from other pth.
 
   if(rhs.root_ != nullptr){
-    kprintf_force(YELLOW "Dump rhs sv again~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
-    UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(rhs.root_), PDPT_LEVEL);
+    // kprintf_force(YELLOW "Dump rhs sv again~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
+    // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(rhs.root_), PDPT_LEVEL);
     kprintf_force(YELLOW "COW for inst~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
+
     root_ = UmPgTblMgmt::walkPgTblCOW(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
-    // root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
+    // printMappedPagesCount(root_);
+
+    // simple_pte* tmp = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(rhs.root_), root_, lvl_);
+    // printMappedPagesCount(tmp);
+      // int db=0; while(db);
+
+
+
     // kprintf_force(RED "Done COW\n" CYAN " pg tbl copy~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
-    UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(root_), PDPT_LEVEL);
+    // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(root_), PDPT_LEVEL);
   }
   return *this;
 }
@@ -50,14 +58,14 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
   // Flush dirty bits out of caches.
   UmPgTblMgmt::doubleCacheInvalidate(const_cast<simple_pte *>(srcRoot), lvl_);
   kprintf_force(CYAN "Before page table copy, orig.\n" RESET);
-  UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(srcRoot), PDPT_LEVEL);
+  // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(srcRoot), PDPT_LEVEL);
 
   // kprintf(BLUE "About to Copy in written pages, root_ is %p\n", root_);
   kprintf_force(CYAN "Copy via Snapshot mechagnism~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
   root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(srcRoot), root_, lvl_);
 
   // kprintf(CYAN "Copy done, root_ is %p\n", root_);
-  UmPgTblMgmt::dumpFullTableAddrs(root_, PDPT_LEVEL);
+  // UmPgTblMgmt::dumpFullTableAddrs(root_, PDPT_LEVEL);
 
   // DEBUGGING
   // kprintf(YELLOW "After copy, dumping old page table\n" RESET);

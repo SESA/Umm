@@ -190,7 +190,12 @@ void PrintErrorCode(x86_64::PgFaultErrorCode ec){
 
   // Write or Read?
   if(ec.WR){
-    kprintf_force(RED "W");
+    if(ec.P){
+      // Present, COW
+      kprintf_force(CYAN "W");
+    }else{
+      kprintf_force(RED "W");
+    }
   } else {
     kprintf_force(YELLOW "R");
   }
@@ -221,32 +226,26 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   /* Pass to the mounted sv to select/allocate the backing page */
   uintptr_t physical_start_addr = 0;
   if(ec.P == 1){
-    kprintf_force("Copy on write a page!\n");
+    // kprintf_force("Copy on write a page!\n");
     physical_start_addr = umi_->GetBackingPageCOW(virtual_page_addr);
   } else{
     physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
   }
+
   lin_addr phys;
   phys.raw = physical_start_addr;
   kassert(physical_start_addr != 0);
-
-  /* Map backing page into core's page tables */
-  // Get PML4[0x180].
-  // If 0, create new table on first mapping
-  //   Update PML4[0x180]
-  // Else, call map using.
 
   simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
   simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
 
   bool writeFault = (ec.WR) ? true : false;
-  kprintf_force(" \(%#llx => %p)", vaddr, physical_start_addr);
-  kprintf_force("\t\t write fault? %s, error code %x\t", ec.WR ? "yes" : "no", ec.val );
-
+  // kprintf_force(" \(%#llx => %p)", vaddr, physical_start_addr);
+  // kprintf_force("\t\t write fault? %s, error code %x\n", ec.WR ? "yes" : "no", ec.val );
 
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry.
-    kprintf_force(RED "Mapping to null pt\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
+    // kprintf_force(RED "Mapping to null pt\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                           TBL_LEVEL, PDPT_LEVEL, writeFault);
 
@@ -255,14 +254,21 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   } else {
     // Slot root holds ptr to sub PT.
-    kprintf_force(RED "Mapping to pt root %p\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
+    // kprintf_force(RED "Mapping to pt root %p\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
                               phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL, writeFault);
   }
-  if(vaddr == 0xffffc000000014a0 ){
-    umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
+
+  // NOTE: if we're in the COW case we have to flush the translation!!!
+  if(ec.P){
+    umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
-  kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
+
+
+  // if(vaddr == 0xffffc000000014a0 ){
+  //   umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
+  // }
+  // kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){

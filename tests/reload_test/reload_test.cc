@@ -14,8 +14,7 @@
 #include "../../src/UmSV.h"
 #include "../../src/UmRegion.h"
 
-// const std::string my_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/tu_app.js"})";
-const std::string my_cmd = "";
+const std::string my_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/tu_app.js"})";
 
 const umm::UmSV* getSnap(){
   // auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
@@ -32,9 +31,9 @@ const umm::UmSV* getSnap(){
 
   // Get snap future.
   auto snap_f = umm::manager->SetCheckpoint(
-                                            umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
+                                            // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
   // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
-                                            // umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+                                            umm::ElfLoader::GetSymbolAddress("uv_uptime"));
 
   umm::manager->Load(std::move(umi));
   umm::manager->runSV();

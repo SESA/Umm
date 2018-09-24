@@ -873,7 +873,7 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   if (curLvl == mapLvl) {
     // We're in the table, modify the entry & importantly mark it dirty.
     // TODO: Should this always be marked accessed? Def in copy dirty.
-    printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
+    // printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
     pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true);
   } else {
     if (exists(pte_ptr)) {
