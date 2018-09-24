@@ -758,6 +758,7 @@ simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy,
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
+  ebbrt::kprintf_force(CYAN "Deep pg tbl copy\n");
   return walkPgTblCopyDirtyHelper(root, copy, lvl, idx);
 }
 

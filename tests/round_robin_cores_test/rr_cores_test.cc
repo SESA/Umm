@@ -14,40 +14,24 @@
 #include "../../src/UmSV.h"
 #include "../../src/UmRegion.h"
 
-// This isn't what I'm after, but may be useful later.
-// void multicoreReload(int numRounds, int numRepeats){
-//   size_t my_cpu = ebbrt::Cpu::GetMine();
-//   size_t num_cpus = ebbrt::Cpu::Count();
+const std::string my_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/tu_app.js"})";
+ebbrt::Future<umm::UmSV*> snap_f[3];
 
-//   for (auto i = my_cpu; i < num_cpus * numRounds; i++) {
-//   // for (auto i = my_cpu + 1; i < my_cpu + numRounds; i++) {
-//     ebbrt::event_manager->SpawnRemote(
-//         [i, numRepeats]() {
-//           // Stagger running to keep output readable.
-//           int sleep = (1ULL << 34) * i; while (sleep--) ;
-
-//           // kprintf("runSV instance on core #%d\n", my_cpu);
-//           loadFromSnapTest(numRepeats);
-//         },
-//         i % num_cpus);
-//   }
-// }
-
-umm::UmSV getSnap(){
-  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
-
+umm::UmSV* getSnap(){
   // Create the Um Instance and set boot configuration
-  ebbrt::kprintf_force(BLUE "Getting umi sv\n" RESET);
-  auto umi = std::make_unique<umm::UmInstance>(sv);
+  ebbrt::kprintf_force(CYAN "Getting umi sv\n" RESET);
+  auto umi = std::make_unique<umm::UmInstance>(umm::ElfLoader::createSVFromElf(&_sv_start));
+  ebbrt::kprintf_force(CYAN "Got umi sv\n" RESET);
 
   // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
+  uint64_t argc = Solo5BootArguments(umi->sv_.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE, my_cmd);
+
   umi->SetArguments(argc);
 
   // Get snap future.
-  auto snap_f = umm::manager->SetCheckpoint(
-                                            // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
+  snap_f[ebbrt::Cpu::GetMine()] = umm::manager->SetCheckpoint(
                                             // umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
+                                            // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
                                             umm::ElfLoader::GetSymbolAddress("uv_uptime"));
 
   umm::manager->Load(std::move(umi));
@@ -55,60 +39,38 @@ umm::UmSV getSnap(){
   umm::manager->Unload();
 
   // assuming this doesn't change. add const.
-  ebbrt::kprintf_force("Grabbing snapshot from future\n");
-  return snap_f.Get();
+  return snap_f[ebbrt::Cpu::GetMine()].Get();
 }
 
 
-void reloadSingleCore(int numRuns) {
-  // Idea, take one snap, deploy on many cores.
-  // assuming this doesn't change. add const.
-  ebbrt::kprintf_force("Grabbing snapshot from future\n");
-
-  auto snap = getSnap();
-
-  // NOTE: Starts at 1 unlike others.
-  for(int i = 1; i < numRuns; i++){
-    size_t my_cpu = ebbrt::Cpu::GetMine();
-    printf(RED "\n\n***** Deploying snapshot %d on core %d\n" RESET, i, my_cpu);
-
-    auto umi2 = std::make_unique<umm::UmInstance>(snap);
-    umm::manager->Load(std::move(umi2));
-    umm::manager->runSV();
-    umm::manager->Unload();
-  }
-}
-
-void doWork(const umm::UmSV &snap){
-  auto umi2 = std::make_unique<umm::UmInstance>(snap);
+umm::UmSV *snap_arr[3];
+void doWork(){
+  auto umi2 = std::make_unique<umm::UmInstance>(*snap_arr[ebbrt::Cpu::GetMine()]);
   umm::manager->Load(std::move(umi2));
   umm::manager->runSV();
   umm::manager->Unload();
 }
 
-void rrCores(int numRounds, int numRuns){
+void rrCores(int numRounds){
     size_t my_cpu = ebbrt::Cpu::GetMine();
     size_t num_cpus = ebbrt::Cpu::Count();
 
-    // Heap allocate an sv.
-    umm::UmSV *snap_ptr = new umm::UmSV();
-    // Get that sweet snapshot.
-    *snap_ptr = getSnap();
+    for (size_t i = my_cpu; i < num_cpus; i++) {
+      snap_arr[i] = getSnap();
 
-    for (size_t i = my_cpu; i < num_cpus * numRounds; i++) {
+      int sleep = (1ULL << 34) * i; while (sleep--) ;
+    }
+
+    for (int i = my_cpu; i < numRounds; i++) {
       ebbrt::event_manager->SpawnRemote(
           // Get snap by ref, we'll copy in the instance constructor.
-          [i, snap_ptr, numRuns]() {
-            // Stagger running to keep output readable.
-            uint64_t sleep = (1ULL << 30) * i;
-            while (sleep--);
+          [i]() {
+            ebbrt::kprintf_force(RED "\nRun SV instance %d, on core %d\n", i,
+                                 (size_t)ebbrt::Cpu::GetMine());
+            // Run an instance.
+            doWork();
+            int sleep = (1ULL << 34) * i; while (sleep--) ;
 
-            for (int j = 0; j < numRuns; j++) {
-              ebbrt::kprintf_force(RED "\nRun SV instance %d, run %d, on core %d\n", i, j,
-                      (size_t)ebbrt::Cpu::GetMine());
-              // Run an instance.
-              doWork(*snap_ptr);
-            }
           },
           i % num_cpus);
     }
@@ -118,7 +80,7 @@ void AppMain() {
   // Initialize the UmManager
   umm::UmManager::Init();
 
-  rrCores(3, 3);
+  rrCores(1<<12);
 
   ebbrt::kprintf_force(RED "Done AppMain()\n" RESET);
 }
