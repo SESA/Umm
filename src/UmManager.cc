@@ -302,7 +302,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
   // If we have a vaild pth root, install it.
   auto pthRoot = umi->sv_.pth.Root();
   if(pthRoot != nullptr){
-    kprintf("Installing instance pte root.\n");
+    // kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
     // kprintf("Slot root is %p\n", pdptRoot);
@@ -470,7 +470,7 @@ void umm::UmManager::DisableTimers(){
   if (timer_set) {
     ebbrt::timer->Stop(*this);
   }
-  kprintf(RED "Disable timers....\n" RESET);
+  // kprintf(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
 }

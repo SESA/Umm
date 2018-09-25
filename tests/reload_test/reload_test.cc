@@ -20,9 +20,9 @@ const umm::UmSV* getSnap(){
   // auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
 
   // Create the Um Instance and set boot configuration
-  ebbrt::kprintf_force(CYAN "Getting umi sv\n" RESET);
+  // ebbrt::kprintf_force(CYAN "Getting umi sv\n" RESET);
   auto umi = std::make_unique<umm::UmInstance>(umm::ElfLoader::createSVFromElf(&_sv_start));
-  ebbrt::kprintf_force(CYAN "Got umi sv\n" RESET);
+  // ebbrt::kprintf_force(CYAN "Got umi sv\n" RESET);
 
   // Configure solo5 boot arguments
   uint64_t argc = Solo5BootArguments(umi->sv_.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE, my_cmd);

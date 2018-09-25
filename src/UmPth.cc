@@ -57,11 +57,11 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
 
   // Flush dirty bits out of caches.
   UmPgTblMgmt::doubleCacheInvalidate(const_cast<simple_pte *>(srcRoot), lvl_);
-  kprintf_force(CYAN "Before page table copy, orig.\n" RESET);
+  // kprintf_force(CYAN "Before page table copy, orig.\n" RESET);
   // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(srcRoot), PDPT_LEVEL);
 
   // kprintf(BLUE "About to Copy in written pages, root_ is %p\n", root_);
-  kprintf_force(CYAN "Copy via Snapshot mechagnism~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
+  // kprintf_force(CYAN "Copy via Snapshot mechagnism~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
   root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(srcRoot), root_, lvl_);
 
   // kprintf(CYAN "Copy done, root_ is %p\n", root_);

@@ -28,7 +28,7 @@ const char* level_names[] = {"NO_LEVEL",
                              "PDPT_LEVEL",
                              "PML4_LEVEL"};
 
-#define printf ebbrt::kprintf_force
+// #define printf ebbrt::kprintf
 
 // TODO(tommyu): Is this ok usage?
 using namespace umm;
@@ -749,6 +749,7 @@ simple_pte * UmPgTblMgmt::walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
+  kprintf(CYAN "COW pg tbl copy\n" RESET);
   return walkPgTblCOWHelper(root, copy, lvl, idx);
 }
 
@@ -758,7 +759,7 @@ simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy,
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
-  ebbrt::kprintf_force(CYAN "Deep pg tbl copy\n");
+  kprintf(MAGENTA "Deep pg tbl copy\n" RESET);
   return walkPgTblCopyDirtyHelper(root, copy, lvl, idx);
 }
 
