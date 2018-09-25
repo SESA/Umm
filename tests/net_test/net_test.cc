@@ -77,8 +77,9 @@ private:
   ebbrt::Promise<void> set_connected;
 }; // end TcpSession
 
-
-umm::UmSV snap_sv;
+const std::string my_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
+ "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
+umm::UmSV* snap_sv;
 
 void AppMain() {
   // Initialize the UmManager
@@ -88,15 +89,15 @@ void AppMain() {
   // Create instance.
   auto umi = std::make_unique<umm::UmInstance>(sv);
   // Configure solo5 boot arguments
-  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start,
-                                     SOLO5_USR_REGION_SIZE);
+  uint64_t argc = Solo5BootArguments(umi->sv_.GetRegionByName("usr").start,
+                                     SOLO5_USR_REGION_SIZE, my_cmd);
   umi->SetArguments(argc);
   umm::manager->Load(std::move(umi));
 
   // Set breakpoint for snapshot
-  ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
+  ebbrt::Future<umm::UmSV*> snap_f = umm::manager->SetCheckpoint(
       umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-  snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
+  snap_f.Then([](ebbrt::Future<umm::UmSV*> snap_f) {
     // Spawn asyncronously allows the debug context clean up correctly
     snap_sv = snap_f.Get();
     ebbrt::event_manager->SpawnLocal(
@@ -111,7 +112,7 @@ void AppMain() {
   umm::manager->Unload();
   ebbrt::kprintf_force("returned from instance... Redeploying snapshop & connecting in 5 seconds..\n");
   ebbrt::clock::SleepMilli(5000);
-  auto umi2 = std::make_unique<umm::UmInstance>(snap_sv);
+  auto umi2 = std::make_unique<umm::UmInstance>(*snap_sv);
   umm::manager->Load(std::move(umi2));
   ebbrt::event_manager->SpawnLocal(
       [=]() {
