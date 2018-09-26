@@ -56,7 +56,8 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
   auto start = ebbrt::clock::Wall::Now();
 
   // Flush dirty bits out of caches.
-  UmPgTblMgmt::doubleCacheInvalidate(const_cast<simple_pte *>(srcRoot), lvl_);
+  // UmPgTblMgmt::doubleCacheInvalidate(const_cast<simple_pte *>(srcRoot), lvl_);
+  UmPgTblMgmt::flushTranslationCaches();
   // kprintf_force(CYAN "Before page table copy, orig.\n" RESET);
   // UmPgTblMgmt::dumpFullTableAddrs(const_cast<simple_pte *>(srcRoot), PDPT_LEVEL);
 
