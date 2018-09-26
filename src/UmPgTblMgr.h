@@ -173,6 +173,7 @@ namespace UmPgTblMgmt {
 
   // Copiers
   simple_pte * walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8_t lvl);
+  simple_pte * walkPgTblCopyDirtyCOW(simple_pte *root, simple_pte *copy, uint8_t lvl);
 
   simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy = nullptr);
   simple_pte * walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl);
@@ -288,6 +289,10 @@ namespace UmPgTblMgmt {
   lin_addr cr3ToAddr();
    simple_pte *nextTableOrFrame(simple_pte *pg_tbl_start, uint64_t pg_tbl_offset,
                                unsigned char lvl);
+  simple_pte *walkPgTblCopyDirtyCOWHelper(simple_pte *root,
+                                 simple_pte *copy,
+                                 unsigned char lvl,
+                                 uint64_t *idx);
    simple_pte *walkPgTblCOWHelper(simple_pte *root,
                                               simple_pte *copy,
                                               unsigned char lvl,

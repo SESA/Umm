@@ -753,6 +753,16 @@ simple_pte * UmPgTblMgmt::walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8
   return walkPgTblCOWHelper(root, copy, lvl, idx);
 }
 
+simple_pte * UmPgTblMgmt::walkPgTblCopyDirtyCOW(simple_pte *root, simple_pte *copy, uint8_t lvl) {
+  // Entry 0 is bogus and unused
+  // HACK(tommyu): trying to get off the ground.
+  uint64_t idx[5] = {0};
+  // HACK(tommyu): This is actually critical.
+  idx[4] = SLOT_PML4_NUM;
+  kprintf(RED "Snapshot COW\n" RESET);
+  return walkPgTblCopyDirtyCOWHelper(root, copy, lvl, idx);
+}
+
 simple_pte * UmPgTblMgmt::walkPgTblCopyDirty(simple_pte *root, simple_pte *copy, uint8_t lvl) {
   // Entry 0 is bogus and unused
   // HACK(tommyu): trying to get off the ground.
@@ -969,6 +979,58 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyHelper(simple_pte *root,
     } else {
       // Don't alter your own root, or you will break on the next goaround.
       copy = walkPgTblCopyDirtyHelper(nextTableOrFrame(root, i, lvl),
+                                      copy, lvl - 1, idx);
+    }
+  }
+  return copy;
+}
+
+simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyCOWHelper(simple_pte *root,
+                                                 simple_pte *copy,
+                                                 unsigned char lvl,
+                                                 uint64_t *idx) {
+  // HACK(tommyu): This is a dirty hack to reconstruct the linear addr that got
+  // you to this dirty page. I think we can do better.
+  // Scan all 512 entries, if predicate holds, recurse.
+  for (int i = 0; i < 512; i++) {
+    if (!exists(root + i))
+      continue;
+    idx[lvl] = i;
+
+    if (isLeaf(root + i, lvl)) {
+      // Higher NYI
+      kassert(lvl == 1);
+      if ((root + i)->decompCommon.DIRTY) {
+        // TODO(tommyu) is there a better way?
+        // Reconstruct page Lin Addr.
+        lin_addr virt = reconstructLinAddrPgFromOffsets(idx);
+        if ((root + i)->decompCommon.RW == 1) {
+          // This page was faulted in during the running of this instance, need
+          // deep copy.
+          // Allocate new page and make copy.
+          lin_addr backing;
+          backing.raw = (root + i)->pageTabEntToAddr(lvl).raw;
+          // Copy onto new page.
+          lin_addr phys = copyDirtyPage(backing, lvl);
+
+
+          // Super useful
+          // kprintf_force(GREEN "C" RESET);
+
+          copy =
+              mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL, true);
+        } else {
+          // This is just a pointer to a page that exists in a previous
+          // snapshot. Just create a pointer here.
+          // copy =
+          //   mapIntoPgTbl(copy, phys, virt, PDPT_LEVEL, lvl, PDPT_LEVEL, true);
+          simple_pte *thisPte = root + i;
+          copy = findAndSetPTECOW(copy, thisPte, virt, PDPT_LEVEL, lvl, PDPT_LEVEL);
+        }
+      }
+    } else {
+      // Don't alter your own root, or you will break on the next goaround.
+      copy = walkPgTblCopyDirtyCOWHelper(nextTableOrFrame(root, i, lvl),
                                       copy, lvl - 1, idx);
     }
   }

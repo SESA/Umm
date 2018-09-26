@@ -63,7 +63,8 @@ void UmPth::copyInPages(const simple_pte *srcRoot){
 
   // kprintf(BLUE "About to Copy in written pages, root_ is %p\n", root_);
   // kprintf_force(CYAN "Copy via Snapshot mechagnism~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" RESET);
-  root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(srcRoot), root_, lvl_);
+  // root_ = UmPgTblMgmt::walkPgTblCopyDirty(const_cast<simple_pte *>(srcRoot), root_, lvl_);
+  root_ = UmPgTblMgmt::walkPgTblCopyDirtyCOW(const_cast<simple_pte *>(srcRoot), root_, lvl_);
 
   // kprintf(CYAN "Copy done, root_ is %p\n", root_);
   // UmPgTblMgmt::dumpFullTableAddrs(root_, PDPT_LEVEL);
