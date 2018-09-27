@@ -83,8 +83,7 @@ public:
       ref_total += e.ref_cycles_;
     }
 
-    ebbrt::kprintf_force(YELLOW "TABLE:\n");
-
+    ebbrt::kprintf_force(YELLOW "TABLE:\n" RESET);
     for (const auto &e : ctr_list) {
       ebbrt::kprintf_force(CYAN "%10s:\tCyc:%6llu\tIns:%6llu\tRef:%6llu\tIns/"
                                 "Cyc:%6.3f\tCyc\%:%3.3f%\n" RESET,
@@ -99,7 +98,7 @@ public:
 
   void add_to_list(TimeRecord &r) {
     if(!init_done_){
-      ebbrt::kprintf_force("Trying to add to list before init, skipping\n");
+      // ebbrt::kprintf_force("Trying to add to list before init, skipping\n");
       return;
     }
 
