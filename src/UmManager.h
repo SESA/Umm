@@ -79,6 +79,18 @@ public:
   Status status() { return status_.get(); } ; 
   void set_status( Status s ) { return status_.set(s);}
 
+  class PgFtCtrs {
+  public:
+    void zero_ctrs();
+    void dump_ctrs();
+    uint64_t pgFaults;
+    uint64_t rdFaults;
+    uint64_t wrFaults;
+    uint64_t cowFaults;
+  };
+  void logFaults(x86_64::PgFaultErrorCode ec);
+  PgFtCtrs pfc;
+
 private:
   /** 
     * PageFaultHandler for the EbbRT VMem subsystem

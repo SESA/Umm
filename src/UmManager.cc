@@ -179,7 +179,7 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
   umm::manager->process_pagefault(ef, addr);
 }
 
-void PrintErrorCode(x86_64::PgFaultErrorCode ec){
+void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
 
   // Green if present, else red.
   // if(ec.P){
@@ -192,22 +192,27 @@ void PrintErrorCode(x86_64::PgFaultErrorCode ec){
   if(ec.WR){
     if(ec.P){
       // Present, COW
-      kprintf_force(CYAN "W");
+      // kprintf_force(CYAN "W");
+      pfc.cowFaults++;
     }else{
-      kprintf_force(RED "W");
+      pfc.wrFaults++;
+      // kprintf_force(RED "W");
     }
   } else {
-    kprintf_force(YELLOW "R");
+    pfc.rdFaults++;
+    // kprintf_force(YELLOW "R");
+
   }
 
   // if(ec.ID){
   //   kprintf_force(GREEN "I");
   // }
 
-  kprintf_force(RESET);
+  // kprintf_force(RESET);
 }
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
+  pfc.pgFaults++;
   if(status() == snapshot)
     kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
@@ -216,7 +221,7 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
-  // PrintErrorCode(ec);
+  logFaults(ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -295,6 +300,7 @@ void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
+  pfc.zero_ctrs();
   // Better not have a loaded root.
   simple_pte *pdptRoot = getSlotPDPTRoot();
   kassert(pdptRoot == nullptr);
@@ -316,6 +322,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
 }
 
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
+  pfc.dump_ctrs();
   simple_pte *slotPML4Ent = umm::manager->getSlotPML4PTE();
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
@@ -473,4 +480,18 @@ void umm::UmManager::DisableTimers(){
   // kprintf(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
+}
+
+void umm::UmManager::PgFtCtrs::zero_ctrs(){
+  pgFaults = 0;
+  rdFaults = 0;
+  wrFaults = 0;
+  cowFaults = 0;
+}
+void umm::UmManager::PgFtCtrs::dump_ctrs(){
+  kprintf("Unloading core, faults:\n");
+  kprintf("total: %lu\n", pgFaults);
+  kprintf("rd:    %lu\n", rdFaults);
+  kprintf("wr:    %lu\n", wrFaults);
+  kprintf("cow:   %lu\n", cowFaults);
 }
