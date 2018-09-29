@@ -45,7 +45,7 @@ public:
 #endif
 
   // TODO HACK XXX DELETEME:
-  uint64_t pg_ft_count;
+  bool bootstrapping = false;
   std::unique_ptr<UmInstance> umi_;
   simple_pte* getSlotPDPTRoot();
 

@@ -230,6 +230,8 @@ namespace UmPgTblMgmt {
 
   void countValidPagesLamb(std::vector<uint64_t> &counts,
                             simple_pte *root, uint8_t lvl);
+  void countValidWritePagesLamb(std::vector<uint64_t> &counts,
+                           simple_pte *root, uint8_t lvl);
   void countValidPTEsLamb(std::vector<uint64_t> &counts,
                           simple_pte *root, uint8_t lvl);
 
@@ -239,6 +241,8 @@ namespace UmPgTblMgmt {
   void countDirtyPagesLamb(std::vector<uint64_t> &counts,
                            simple_pte *root, uint8_t lvl);
 
+  // HACK
+  void traverseWriteablePages(simple_pte *root, uint8_t lvl, leafFn L);
   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L);
   void traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L, beforeRetFn BRET);
 

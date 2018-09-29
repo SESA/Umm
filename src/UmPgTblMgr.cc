@@ -10,6 +10,8 @@
 
 #include "UmManager.h"  // hack to get per core copied pages count.
 #include "UmPgTblMgr.h"
+#include "UmManager.h"
+// #include <Umm.h>
 #include <vector>
 
 #define printf kprintf
@@ -73,6 +75,16 @@ void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
   };
   traverseValidPages(root, lvl, leafFn);
 }
+
+// void UmPgTblMgmt::countValidWritePagesLamb(std::vector<uint64_t> &counts,
+//                                       simple_pte *root, uint8_t lvl) {
+//   // HACK
+//   // Counts number mapped pages.
+//   auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+//     counts[lvl]++;
+//   };
+//   traverseWriteablePages(root, lvl, leafFn);
+// }
 
 void UmPgTblMgmt::doubleCacheInvalidate(simple_pte *root, uint8_t lvl){
   printf("Flushing translation caches two ways\n");
@@ -149,6 +161,15 @@ void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
                     beforeReturn
                     );
 }
+
+// void UmPgTblMgmt::traverseWriteablePages(simple_pte *root, uint8_t lvl, leafFn L) {
+//   auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
+//     // exists() is redundant assuming non existant ptes are 0.
+//     return exists(curPte) && isAccessed(curPte) && isWritable(curPte);
+//   };
+
+//   traversePageTable(root, lvl, pred, nullBRFn, nullARFn, L, nullBRetFn);
+// }
 
 void UmPgTblMgmt::traverseAccessedPages(simple_pte *root, uint8_t lvl, leafFn L) {
   auto pred = [](simple_pte *curPte, uint8_t lvl) -> bool {
@@ -994,7 +1015,9 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyCOWHelper(simple_pte *root,
     if (isLeaf(root + i, lvl)) {
       // Higher NYI
       kassert(lvl == 1);
-      if ((root + i)->decompCommon.DIRTY) {
+      // If it's a dirty page or if we're bootstrapping (making base envt);
+      if ((root + i)->decompCommon.DIRTY || umm::manager->bootstrapping) {
+      // if ((root + i)->decompCommon.DIRTY ) {
         // TODO(tommyu) is there a better way?
         // Reconstruct page Lin Addr.
         lin_addr virt = reconstructLinAddrPgFromOffsets(idx);

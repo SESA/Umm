@@ -153,6 +153,8 @@ OK:
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
+  // ebbrt::kprintf_force(CYAN "Snapshotting, core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
+  // pfc.dump_ctrs();
   set_status(snapshot);
 
   UmSV* snap_sv = new UmSV();
@@ -168,8 +170,20 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   // Copy all dirty pages into new page table.
   snap_sv->pth.copyInPages(getSlotPDPTRoot());
 
+
   // Save the snapshot and resume execution of the instance
   // This will synchronously execute a future->Then( lambda ) 
+  // ebbrt::kprintf_force(CYAN "Have snapshot, it has pages\n" RESET, (size_t) ebbrt::Cpu::GetMine());
+
+  // {
+  //   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
+  //   UmPgTblMgmt::countValidWritePagesLamb(counts, snap_sv->pth.Root(), 3);
+  //   for (int i = 4; i > 0; i--) {
+  //     kprintf_force(YELLOW "counts[%s] = %lu\n" RESET, level_names[i],
+  //                   counts[i]);
+  //   }
+  // }
+
   umi_snapshot_->SetValue(snap_sv);
   set_status(running);
 }
@@ -322,7 +336,9 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
 }
 
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
-  pfc.dump_ctrs();
+  // ebbrt::kprintf_force(MAGENTA "Unloadin core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
+  // pfc.dump_ctrs();
+
   simple_pte *slotPML4Ent = umm::manager->getSlotPML4PTE();
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
 
@@ -489,9 +505,8 @@ void umm::UmManager::PgFtCtrs::zero_ctrs(){
   cowFaults = 0;
 }
 void umm::UmManager::PgFtCtrs::dump_ctrs(){
-  kprintf("Unloading core, faults:\n");
-  kprintf("total: %lu\n", pgFaults);
-  kprintf("rd:    %lu\n", rdFaults);
-  kprintf("wr:    %lu\n", wrFaults);
-  kprintf("cow:   %lu\n", cowFaults);
+  kprintf_force("total: %lu\n", pgFaults);
+  kprintf_force("rd:    %lu\n", rdFaults);
+  kprintf_force("wr:    %lu\n", wrFaults);
+  kprintf_force("cow:   %lu\n", cowFaults);
 }
