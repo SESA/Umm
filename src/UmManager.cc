@@ -419,7 +419,7 @@ ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
 }
 
 void umm::UmManager::Fire(){
-  kprintf(RED "(F)" RESET);
+  // kprintf(RED "(F)" RESET);
   kassert(timer_set);
   timer_set = false;
 
@@ -441,12 +441,12 @@ void umm::UmManager::Fire(){
 
     // Unblock instance
     status_.set(running);
-    kprintf("Activating context, block ctr:%d\n", block_ctr_);
+    // kprintf("Activating context, block ctr:%d\n", block_ctr_);
     // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
     ebbrt::event_manager->ActivateContext(std::move(*context_));
-    kprintf("Post activate, block ctr:%d\n", block_ctr_);
+    // kprintf("Post activate, block ctr:%d\n", block_ctr_);
   }
-  kprintf(RED "(FR)" RESET);
+  // kprintf(RED "(FR)" RESET);
   // kabort("UmManager timeout error: blocking indefinitley\n");
 }
 
@@ -463,26 +463,26 @@ void umm::UmManager::Block(size_t ns){
   SetTimer(now);
   status_.set(blocked);
   context_ = new ebbrt::EventManager::EventContext();
-  int current_bc = block_ctr_;
+  // int current_bc = block_ctr_;
   block_ctr_++;
-  kprintf(RED "Context saved: %d\n", current_bc);
+  // kprintf(RED "Context saved: %d\n", current_bc);
   ebbrt::event_manager->SaveContext(*context_);
-  kprintf(RED "Context restored...\n");
-  kprintf(RED "Context restored: %d\n", current_bc);
+  // kprintf(RED "Context restored...\n");
+  // kprintf(RED "Context restored: %d\n", current_bc);
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
   if (timer_set){
-    kprintf(RED "T" RESET);
+    // kprintf(RED "T" RESET);
     return;
   }
 
   if (now >= time_wait) {
-    kprintf(YELLOW "T" RESET);
+    // kprintf(YELLOW "T" RESET);
     return;
   }
 
-  kprintf(GREEN "T" RESET);
+  // kprintf(GREEN "T" RESET);
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
   ebbrt::timer->Start(*this, duration, /* repeat = */ false);

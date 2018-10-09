@@ -17,7 +17,7 @@ UmPth::UmPth(const UmPth &rhs) : root_(nullptr) {
 
   UmPth::~UmPth(){
     if (root_ != nullptr){
-      kprintf(YELLOW "Reclaiming page table.\n" RESET);
+      // kprintf(YELLOW "Reclaiming page table.\n" RESET);
 
 #if PTH_PERF
       auto a = umm::manager->ctr.CreateTimeRecord(std::string("free pt"));

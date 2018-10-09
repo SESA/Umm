@@ -51,7 +51,7 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
       return len;
     }
   } else if (ethtype == 0x86dd) { // ignore IPv6
-    kprintf("UmProxy ignore type=0x%x len=%d\n", ethtype, len);
+    // kprintf("UmProxy ignore type=0x%x len=%d\n", ethtype, len);
     return len;
   }
   auto ibuf = ebbrt::MakeUniqueIOBuf(len);
@@ -59,11 +59,11 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
 #ifndef NDEBUG /// DEBUG OUTPUT
-  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-                      (size_t)ebbrt::Cpu::GetMine(),
-                   buf->ComputeChainDataLength(),
-                   buf->CountChainElements());
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  // ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+  //                     (size_t)ebbrt::Cpu::GetMine(),
+  //                  buf->ComputeChainDataLength(),
+  //                  buf->CountChainElements());
+  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
 #endif 
 
   // TODO(jmcadden): Send buffer out asynchronously
@@ -84,7 +84,7 @@ uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
   kassert(len >= in_len);
   auto dp = buf->GetDataPointer();
   dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
-  kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
+  // kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
   return in_len;
 }
 
@@ -121,11 +121,11 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   } // end if kNeedsCsum
 
 #ifndef NDEBUG /// DEBUG OUTPUT
-  ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
-                      (size_t)ebbrt::Cpu::GetMine(),
-                      buf->ComputeChainDataLength(),
-                      buf->CountChainElements());
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+  // ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+  //                     (size_t)ebbrt::Cpu::GetMine(),
+  //                     buf->ComputeChainDataLength(),
+  //                     buf->CountChainElements());
+  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
 #endif
 
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
@@ -133,7 +133,7 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
 
 void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
                            ebbrt::PacketInfo pinfo) {
-  kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
+  // kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
   // Queue network data to be read into the UM instance (via UmRead)
   if (!buf->ComputeChainDataLength())
     return;

@@ -767,7 +767,7 @@ simple_pte * UmPgTblMgmt::walkPgTblCOW(simple_pte *root, simple_pte *copy, uint8
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
-  kprintf(CYAN "COW pg tbl copy\n" RESET);
+  // kprintf(CYAN "COW pg tbl copy\n" RESET);
   return walkPgTblCOWHelper(root, copy, lvl, idx);
 }
 
@@ -777,7 +777,7 @@ simple_pte * UmPgTblMgmt::walkPgTblCopyDirtyCOW(simple_pte *root, simple_pte *co
   uint64_t idx[5] = {0};
   // HACK(tommyu): This is actually critical.
   idx[4] = SLOT_PML4_NUM;
-  kprintf(RED "Snapshot COW\n" RESET);
+  // kprintf(RED "Snapshot COW\n" RESET);
   return walkPgTblCopyDirtyCOWHelper(root, copy, lvl, idx);
 }
 

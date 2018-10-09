@@ -31,13 +31,13 @@ const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.
 static int solo5_hypercall_poll(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_poll *)arg;
   arg_->ret = 0;
-  ebbrt::kprintf(YELLOW "<y" RESET);
+  // ebbrt::kprintf(YELLOW "<y" RESET);
   umm::manager->Block(arg_->timeout_nsecs);
-  ebbrt::kprintf(YELLOW "/>" RESET);
+  // ebbrt::kprintf(YELLOW "/>" RESET);
   // return from block
 
   if(umm::proxy->UmHasData()){
-    ebbrt::kprintf(YELLOW "HD" RESET);
+    // ebbrt::kprintf(YELLOW "HD" RESET);
     arg_->ret = 1;
   }
   return 0;
@@ -72,7 +72,7 @@ static int solo5_hypercall_netwrite(volatile void *arg) {
   unsigned long len = arg_->len;
   ebbrt::event_manager->SpawnLocal(
       [buf,len]() {
-        ebbrt::kprintf(GREEN "solo5 netwrite\n" RESET);
+        // ebbrt::kprintf(GREEN "solo5 netwrite\n" RESET);
         umm::proxy->UmWrite(const_cast<const void *>(buf), len); }, true);
   return 0;
 }
