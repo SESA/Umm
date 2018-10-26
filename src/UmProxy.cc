@@ -14,6 +14,7 @@
 #define DEBUG_PRINT_IP  0
 #define DEBUG_PRINT_TCP 0
 #define DEBUG_PRINT_UDP 0
+#define DEBUG_PRINT_IO  0
 
 void umm::UmProxy::Init() {
   // Setup Ebb translations
@@ -59,11 +60,13 @@ uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
   auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 
 #ifndef NDEBUG /// DEBUG OUTPUT
-  // ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-  //                     (size_t)ebbrt::Cpu::GetMine(),
-  //                  buf->ComputeChainDataLength(),
-  //                  buf->CountChainElements());
-  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#if DEBUG_PRINT_IO
+  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+                       (size_t)ebbrt::Cpu::GetMine(),
+                    buf->ComputeChainDataLength(),
+                    buf->CountChainElements());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
 #endif 
 
   // TODO(jmcadden): Send buffer out asynchronously
@@ -121,11 +124,13 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   } // end if kNeedsCsum
 
 #ifndef NDEBUG /// DEBUG OUTPUT
-  // ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
-  //                     (size_t)ebbrt::Cpu::GetMine(),
-  //                     buf->ComputeChainDataLength(),
-  //                     buf->CountChainElements());
-  // umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#if DEBUG_PRINT_IO
+  ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
+                      (size_t)ebbrt::Cpu::GetMine(),
+                      buf->ComputeChainDataLength(),
+                      buf->CountChainElements());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
 #endif
 
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
