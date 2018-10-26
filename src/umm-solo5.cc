@@ -2,6 +2,7 @@
 #include "umm-solo5.h"
 
 #include "UmProxy.h"
+#include "umm-internal.h"
 
 /*
  * Block until timeout_nsecs have passed or I/O is
@@ -10,13 +11,21 @@
 void solo5_hypercall_poll(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_poll *)arg;
   arg_->ret = 0;
+
+  // First check if we have data
+  if (umm::manager->ActiveInstance()->HasData()) {
+    arg_->ret = 1;
+    return;
+  }
+  // TODO: Make this a block call on the active instance
   umm::manager->Block(arg_->timeout_nsecs);
   // return from block
 
-  if(umm::proxy->UmHasData()){
+  if (umm::manager->ActiveInstance()->HasData()) {
     arg_->ret = 1;
   }
 }
+
 
 void solo5_hypercall_netinfo(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netinfo *)arg;
@@ -44,6 +53,7 @@ void solo5_hypercall_netwrite(volatile void *arg) {
   void *buf = malloc(arg_->len);
   memcpy((void *)buf, arg_->data, arg_->len);
   unsigned long len = arg_->len;
+  // Spawn of outgoing write on new event
   ebbrt::event_manager->SpawnLocal(
       [buf, len]() {
         umm::proxy->ProcessOutgoing(umm::UmProxy::raw_to_iobuf(buf, len));
@@ -64,7 +74,18 @@ struct ukvm_netread {
 }; */
 void solo5_hypercall_netread(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netread *)arg;
-  arg_->len = umm::proxy->UmRead(arg_->data, arg_->len);
-  // ret is 0 on successful read, 1 otherwise
-  arg_->ret = (arg_->len > 0) ? 0 : 1;
+  if (umm::manager->ActiveInstance()->HasData()) {
+    auto buf = umm::manager->ActiveInstance()->ReadPacket();
+    auto buflen = buf->ComputeChainDataLength();
+    kbugon(buflen > arg_->len);
+    auto dp = buf->GetDataPointer();
+    dp.GetNoAdvance(buflen,
+                    static_cast<uint8_t *>(arg_->data)); // This does a memcpy
+    arg_->len = buflen;
+    // arg_->ret is 0 on successful read, 1 otherwise
+    arg_->ret = 0;
+  } else {
+    arg_->ret = 1;
+  }
+  return;
 }

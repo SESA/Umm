@@ -49,8 +49,7 @@ void runHelloWorld() {
   auto umi = std::make_unique<umm::UmInstance>(sv);
   uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE);
   umi->SetArguments(argc);
-  manager->Load(std::move(umi));
-  manager->runSV();
+  manager->Run(std::move(umi));
 }
 
 void testCountValidPages(){

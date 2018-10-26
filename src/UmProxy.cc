@@ -3,9 +3,12 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
+#include <cstdint>
 #include <string.h> // memcpy
 
 #include "UmProxy.h"
+#include "UmInstance.h"
+#include "UmManager.h"
 #include "umm-internal.h"
 
 // DEBUG NETWORK TRACE
@@ -19,141 +22,132 @@
 void umm::UmProxy::Init() {
   // Setup Ebb translations
   auto lo_dev = new LoopbackDriver();
-  Create(lo_dev, UmProxy::global_id);
+  auto proxy_root = new ProxyRoot(*lo_dev);
+  Create(proxy_root, UmProxy::global_id);
 }
 
-umm::LoopbackDriver::LoopbackDriver()
-    : itf_(ebbrt::network_manager->NewLoopback(*this)) {
-  /** Hard-coded the LO interface ipv4 and mac address */
-  mac_addr_ = {{0x06, 0xfe, 0x22, 0x22, 0x22, 0x22}};
-  auto addr = new ebbrt::NetworkManager::Interface::ItfAddress();
-  addr->address = {{169, 254, 0, 1}};
-  addr->netmask = {{255, 255, 0, 0}};
-  addr->gateway = {{169, 254, 0, 1}};
-  itf_.SetAddress(
-      std::unique_ptr<ebbrt::NetworkManager::Interface::ItfAddress>(addr));
+umm::umi::id umm::ProxyRoot::InternalPortLookup(uint16_t src_port){
+  std::lock_guard<ebbrt::SpinLock> guard(host_map_lock_);
+  auto it = host_src_port_map_.find(src_port);
+  // We should not already find a mapping
+  if(it == host_src_port_map_.end()){
+    kprintf_force(RED "ProxyRoot: ERROR no match for internal src_port= %u \n", src_port);
+    kabort();
+  }
+  return it->second;
 }
 
-void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
-                               ebbrt::PacketInfo pinfo) {
-
-#ifndef NDEBUG /// DEBUG OUTPUT
-#if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO OUTGOING PRE-MASK (lo->umi) len=%d chain_len=%d\n",
-                      (size_t)ebbrt::Cpu::GetMine(),
-                      buf->ComputeChainDataLength(),
-                      buf->CountChainElements());
-#endif
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
-#endif
-
-  auto mbuf = std::unique_ptr<ebbrt::MutIOBuf>(static_cast<ebbrt::MutIOBuf *>(buf.release()));
-  umm::UmProxy::nat_masquerade_in(mbuf);
-  buf = std::unique_ptr<ebbrt::IOBuf>(static_cast<ebbrt::IOBuf *>(mbuf.release()));
-
-  /** Set the TCP/UDP checksum for outgoing packets */
-  if (pinfo.flags & ebbrt::PacketInfo::kNeedsCsum) {
-    if (pinfo.csum_offset == 6) { // UDP
-      /* UDP header checksum is optional so we clear the value */
-      kabort("UDP checksum not yet supported\n");
-      buf->Advance(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
-      auto mbuf = static_cast<ebbrt::MutIOBuf *>(buf.release());
-      auto udp_header = reinterpret_cast<ebbrt::UdpHeader *>(mbuf->MutData());
-      udp_header->checksum = 0;
-      mbuf->Retreat(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
-      buf = std::unique_ptr<ebbrt::IOBuf>(static_cast<ebbrt::IOBuf *>(mbuf));
-    } else if (pinfo.csum_offset == 16) { // TCP
-      kprintf("Computing TCP checksum \n");
-      /* For TCP we compute the checksum with a pseudo IP header */
-      buf->Advance(sizeof(ebbrt::EthernetHeader));
-      auto ip_header = reinterpret_cast<const ebbrt::Ipv4Header *>(buf->Data());
-      auto src_addr = ip_header->src;
-      auto dst_addr = ip_header->dst;
-      buf->Advance(sizeof(ebbrt::Ipv4Header));
-      auto mbuf = static_cast<ebbrt::MutIOBuf *>(buf.release());
-      auto tcp_header = reinterpret_cast<ebbrt::TcpHeader *>(mbuf->MutData());
-      tcp_header->checksum = 0;
-      tcp_header->checksum =
-          IpPseudoCsum(*mbuf, ebbrt::kIpProtoTCP, src_addr, dst_addr);
-      mbuf->Retreat(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
-      buf = std::unique_ptr<ebbrt::IOBuf>(static_cast<ebbrt::IOBuf *>(mbuf));
-    } else {
-      kabort("Error: Unknown packet checksum required ");
+void umm::ProxyRoot::SetupInternalPortMapping(umi::id id, uint16_t src_port) {
+  std::lock_guard<ebbrt::SpinLock> guard(host_map_lock_);
+  auto it = host_src_port_map_.find(src_port);
+  if(it != host_src_port_map_.end()){
+    // We should not already find a mapping
+    if( id != it->second ){
+      kprintf_force(RED "ProxyRoot: ERROR on mapping internal src_port=%u for "
+                        "UMI #%d, conflict with UMI #%d \n",
+                    src_port, id, it->second);
+      kabort();
     }
-  } // end if kNeedsCsum
-
-#ifndef NDEBUG /// DEBUG OUTPUT
-#if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO OUTGOING (lo->umi) len=%d chain_len=%d\n",
-                      (size_t)ebbrt::Cpu::GetMine(),
-                      buf->ComputeChainDataLength(),
-                      buf->CountChainElements());
-#endif
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
-#endif
-
-  umm::proxy->Receive(std::move(buf), std::move(pinfo));
+  }
+  kprintf(CYAN "ProxyRoot: Map host port %u to umi #%u \n" RESET, src_port,id);
+   host_src_port_map_.emplace(src_port, id);
+   return;
 }
 
+umm::internal_port_t umm::ProxyRoot::ExternalPortLookup(external_port_t nport){
+  port_map_left_iterator_t it = master_port_map_.left.find(nport);
+  if (it != master_port_map_.left.end()) {
+    // Hit
+    return it->second;
+  } else {
+    // Miss
+    return null_port_mapping_;
+  }
+}
+
+uint16_t umm::ProxyRoot::SetupExternalPortMapping(umi::id id, uint16_t port) {
+  auto iport = umm::UmProxy::internal_port(port, id);
+  port_map_right_iterator_t it = master_port_map_.right.find(iport);
+  if (it != master_port_map_.right.end()) {
+    return it->second;
+  }
+
+  auto nport = allocate_port();
+  port_owner_map_.emplace(id, nport);
+  master_port_map_.insert(port_map_t::value_type(nport, iport));
+  kprintf(CYAN "ProxyRoot: Map port %u to umi #%u internal port %u on core %u\n" RESET, nport,
+          std::get<0>(iport), std::get<2>(iport), std::get<1>(iport));
+  return nport;
+}
+
+void umm::ProxyRoot::FreePorts(umi::id id){
+  // XXX: Figure out how a multimap works
+  //auto its = port_owner_map_.equal_range(id);
+  //for (auto it = its.first; it != its.second; ++it) {
+  //  kprintf("Freeing port %u\n", it->second);
+  //  free_port(it->second);
+  //}
+  //port_owner_map_.erase(id);
+  return;
+}
+
+
+uint16_t umm::ProxyRoot::allocate_port() {
+  std::lock_guard<ebbrt::SpinLock> guard(port_lock_);
+  if (unlikely(port_set_.empty())) {
+    kabort("ProxyRoot: ERROR no NAT ports remaining! (because we never free any. lol.) \n");
+  }
+  uint16_t ret = boost::icl::first(port_set_);
+  port_set_.subtract(ret);
+  return ret;
+}
+
+void umm::ProxyRoot::free_port(uint16_t val) {
+  std::lock_guard<ebbrt::SpinLock> guard(port_lock_);
+  master_port_map_.left.erase(val);
+  // XXX: (_HACK_) I've disabled freeing ports because it was causing the external
+  // HTTP server to reject new connections if the same port was used in quick
+  // succession. By not freeing used ports we guarantee a unique port each time
+
+  /* port_set_ += val; // Free the port */
+}
+
+bool umm::UmProxy::internal_source(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
+  auto dp = buf->GetMutDataPointer();
+  auto& eh = dp.Get<ebbrt::EthernetHeader>();
+  ebbrt::EthernetAddress src_eth = {
+      {eh.src[0], eh.src[1], eh.src[2], eh.src[3], eh.src[4], eh.src[5]}};
+  if( src_eth == host_internal_macaddr()){
+    return true;
+  }
+  return false;
+}
 
 bool umm::UmProxy::internal_destination(std::unique_ptr<ebbrt::MutIOBuf>& buf){
-
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
   auto dp = buf->GetMutDataPointer();
   auto& eth = dp.Get<ebbrt::EthernetHeader>();
   auto ethtype = ebbrt::ntohs(eth.type);
-
   if (ethtype == ebbrt::kEthTypeArp) {
+    // All ARP requests are handled internally
     return true;
   }
-
   kassert(ethtype == ebbrt::kEthTypeIp);
   auto iph = dp.Get<ebbrt::Ipv4Header>();
   auto dst = iph.dst.toArray();
   auto iip = host_internal_ipv4().toArray();
-  for (uint8_t i = 0; i < 4; ++i) {
-    if (dst[i] != iip[i]) {
-      ebbrt::kprintf_force(
-          "Destination IP is external:  %hhd.%hhd.%hhd.%hhd \n", 
-                       dst[0], dst[1], dst[2], dst[3]);
-      return false;
-    }
+  if (dst != iip) {
+    return false;
   }
-  ebbrt::kprintf_force("Destination IP is internal:  %hhd.%hhd.%hhd.%hhd \n",
-                       dst[0], dst[1], dst[2], dst[3]);
   return true;
 }
 
-void umm::UmProxy::nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf>& buf){}
 
-void umm::UmProxy::nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){}
-
-void umm::UmProxy::nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf>& buf){
-
+bool umm::UmProxy::nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
   auto dp = buf->GetMutDataPointer();
-  auto& eth = dp.Get<ebbrt::EthernetHeader>();
-  auto ethtype = ebbrt::ntohs(eth.type);
-
-  // Mask ethernet 
-  eth.src = client_local_macaddr();
-
-  if (ethtype == ebbrt::kEthTypeArp) {
-     auto& arp = dp.Get<ebbrt::ArpPacket>();
-     arp.sha = client_local_macaddr();
-     arp.spa = client_local_ipv4();
-  } else if (ethtype == ebbrt::kEthTypeIp) {
-    auto &ip = dp.Get<ebbrt::Ipv4Header>();
-    ip.src = client_local_ipv4();
-    ip.chksum = 0;
-    ip.chksum = ip.ComputeChecksum();
-  }
-}
-
-void umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
-
-  /* Overwrite the destination/target IP and MAC with thier internal values */
-
-  auto dp = buf->GetMutDataPointer();
-  auto& eth = dp.Get<ebbrt::EthernetHeader>();
+  auto &eth = dp.Get<ebbrt::EthernetHeader>();
   auto ethtype = ebbrt::ntohs(eth.type);
 
   // Don't overwrite the destination mac of ARP messages
@@ -167,8 +161,6 @@ void umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
       arp.tha = client_internal_macaddr();
       eth.dst = client_internal_macaddr();
     }
-    if(ebbrt::ntohs(arp.oper) == 0x2){ // ARP REPLY
-    }
   } else if (ethtype == ebbrt::kEthTypeIp) {
     eth.dst = client_internal_macaddr();
     auto &ip = dp.Get<ebbrt::Ipv4Header>();
@@ -176,31 +168,326 @@ void umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
     ip.chksum = 0;
     ip.chksum = ip.ComputeChecksum();
   }
+  return true;
 }
 
-void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
 
-  // PREPROCESSING
+bool umm::UmProxy::nat_postprocess_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+  kassert(buf->Length() >= sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
+  return true;
+}
+
+
+bool umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
+  kassert(buf->Length() >= sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
+  auto dp = buf->GetMutDataPointer();
+  auto &eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
+  kassert(ethtype == ebbrt::kEthTypeIp);
+  auto &ip = dp.Get<ebbrt::Ipv4Header>();
+  kassert(ip.proto == 0x6);
+  // Grab the tcp/ip headers and let's take a look
+  auto &tcp = dp.Get<ebbrt::TcpHeader>();
+  auto nport = ebbrt::ntohs(tcp.dst_port);
+  // Set the correct destination port
+  tcp.dst_port = ebbrt::htons(swizzle_port_in(nport));
+  return true;
+}
+
+
+// Reset an external connection
+void umm::UmProxy::nat_connection_reset(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
+  if (buf->Length() >=
+      (sizeof(ebbrt::EthernetHeader) + sizeof(ebbrt::Ipv4Header) +
+       sizeof(ebbrt::TcpHeader))) {
+    // TCP RESET?
+    auto dp = buf->GetMutDataPointer();
+    dp.Advance(sizeof(ebbrt::EthernetHeader));
+    auto &ip = dp.Get<ebbrt::Ipv4Header>();
+    auto &tcp = dp.Get<ebbrt::TcpHeader>();
+    uint32_t ackno = ebbrt::ntohl(tcp.ackno);
+    uint16_t local_port = ebbrt::ntohs(tcp.dst_port);
+    uint16_t remote_port = ebbrt::ntohs(tcp.src_port);
+    ebbrt::Ipv4Address local_ip = host_external_ipv4();
+    ebbrt::Ipv4Address remote_ip = ip.src;
+    ebbrt::network_manager->TcpReset(false, ackno, 0, local_ip, remote_ip,
+                                     local_port, remote_port);
+  }
+  return;
+}
+
+bool umm::UmProxy::nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf>& buf){
   kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
   auto dp = buf->GetMutDataPointer();
   auto& eth = dp.Get<ebbrt::EthernetHeader>();
   auto ethtype = ebbrt::ntohs(eth.type);
+
+  if (internal_destination(buf)) { /* INTERNAL DESTINATION */
+    // Mask ethernet
+    eth.src = umm::UmInstance::CoreLocalMac();
+    if (ethtype == ebbrt::kEthTypeArp) {
+      auto &arp = dp.Get<ebbrt::ArpPacket>();
+      arp.sha = umm::UmInstance::CoreLocalMac();
+      arp.spa = umm::UmInstance::CoreLocalIp();
+    } else if (ethtype == ebbrt::kEthTypeIp) {
+      auto &ip = dp.Get<ebbrt::Ipv4Header>();
+      ip.src = umm::UmInstance::CoreLocalIp();
+      ip.chksum = 0;
+      ip.chksum = ip.ComputeChecksum();
+      kassert(ip.ComputeChecksum() == 0);
+    }
+  } else { /* EXTERNAL DESTINATION */
+    if (ethtype == ebbrt::kEthTypeIp) {
+
+      // XXX: we arn't masking internal macaddr, is this ok?
+
+      /* apply host mask to ipv4 header */
+      auto &ip = dp.Get<ebbrt::Ipv4Header>();
+      ip.src = host_external_ipv4();
+#if DEBUG_PRINT_IO
+      auto dst = ip.dst.toArray();
+      kprintf( MAGENTA "Outgoing external packet: len=%d dst=%hhd.%hhd.%hhd.%hhd \n" RESET,
+          buf->Length(), dst[0], dst[1], dst[2], dst[3]);
+#endif
+      ip.chksum = 0;
+      ip.chksum = ip.ComputeChecksum();
+      kassert(ip.ComputeChecksum() == 0);
+      /* apply port mask to tcp source port */
+      if (ip.proto == 0x6) {
+        auto &tcp = dp.Get<ebbrt::TcpHeader>();
+        auto iport = ebbrt::ntohs(tcp.src_port);
+        tcp.src_port = ebbrt::htons(swizzle_port_out(iport));  
+      }
+    } else {
+      kprintf_force("UmProxy: NAT not yet implemented for protocol type: %d\n",
+              ethtype);
+      return false;
+    }
+  }
+  return true;
+}
+
+
+bool umm::UmProxy::nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
+  auto dp = buf->GetMutDataPointer();
+  auto &eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
   if (ethtype == ebbrt::kEthTypeArp) {
     auto arp = dp.GetNoAdvance<ebbrt::ArpPacket>();
-    if (arp.spa == arp.tpa) { // Gratuitous ARP
-      kprintf("UmProxy ignore gratuitous ARP\n");
-      // DROP PACKET AND RETURN
+    if (arp.spa == arp.tpa) { // Ignore Gratuitous ARP
+      return false;
+    }
+  //TODO: more protocols to ignore..?
+  } else if (ethtype == 0x86dd) { // Ignore IPv6
+    return false;
+  }
+
+//#ifndef NDEBUG /// DEBUG OUTPUT
+//#if DEBUG_PRINT_IO
+//  ebbrt::kprintf_force(
+//      "UmProxy(c%lu): OUTGOING PRE-MASK (<-umi) len=%d chain_len=%d\n",
+//      (size_t)ebbrt::Cpu::GetMine(), buf->ComputeChainDataLength(),
+//      buf->CountChainElements());
+//#endif
+//  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+//#endif
+  return true;
+}
+
+
+bool umm::UmProxy::nat_postprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
+  return true;
+}
+
+
+/** Process an incoming packet with an UMI target destination */
+void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
+                                   ebbrt::PacketInfo pinfo) {
+#ifndef NDEBUG 
+#if DEBUG_PRINT_IO /// DEBUG OUTPUT
+  ebbrt::kprintf_force("UmProxy(c%lu): INCOMING PRE-MASK\n",
+                       (size_t)ebbrt::Cpu::GetMine());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif
+
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
+  // Cast buf into an mbuf so we can overwrite the fields
+  // Usage of `buf` will segfault after this
+  auto mbuf = std::unique_ptr<ebbrt::MutIOBuf>(
+      static_cast<ebbrt::MutIOBuf *>(buf.release()));
+
+  // To start, assume this is for active UMI on current core
+  size_t current_core = (size_t)ebbrt::Cpu::GetMine();
+  auto target_umi = umi_id_;
+
+  // Preprocess
+  if (!umm::UmProxy::nat_preprocess_in(mbuf)) {
+    return;
+  }
+
+  // External masquerade
+  if (!internal_source(mbuf)) { // If source is external
+    // Confirm that the message is TCP
+    if (mbuf->Length() >=
+        (sizeof(ebbrt::EthernetHeader) + sizeof(ebbrt::Ipv4Header) +
+         sizeof(ebbrt::TcpHeader))) {
+      auto dp = mbuf->GetDataPointer();
+      dp.Advance(sizeof(ebbrt::EthernetHeader));
+      auto ip = dp.Get<ebbrt::Ipv4Header>();
+      if (ip.proto != 0x6) {
+        goto post_masq;
+      }
+#if DEBUG_PRINT_IO
+      auto src = ip.src.toArray();
+      kprintf(MAGENTA "Incoming external packet: len=%d src="
+                      "%hhd.%hhd.%hhd.%hhd \n" RESET,
+              mbuf->Length(), src[0], src[1], src[2], src[3]);
+#endif
+      auto tcp = dp.Get<ebbrt::TcpHeader>();
+      auto payload_len = mbuf->Length() - tcp.HdrLen() -
+                         sizeof(ebbrt::Ipv4Header) -
+                         sizeof(ebbrt::EthernetHeader);
+
+      auto nport = ebbrt::ntohs(tcp.dst_port);
+      auto mapping = root_.ExternalPortLookup(nport);
+      target_umi = std::get<0>(mapping);
+      auto target_cpu = std::get<1>(mapping);
+      
+      // Confirm mapping is still valid
+      // Confirm the UMI still valid
+      if (mapping == null_port_mapping_) {
+        kprintf(YELLOW "Warning: Core %u received packet for nonexistant "
+                       "mapping (nport=%d). DROPPING...\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine(), nport);
+        nat_connection_reset(mbuf);
+        return;
+      }
+
+      // Check if this is the correct core for this UMI
+      // If not, spawn processing on the corresponding core
+      if (current_core != target_cpu) {
+        kassert(target_cpu < ebbrt::Cpu::Count());
+        buf = std::unique_ptr<ebbrt::IOBuf>(
+            static_cast<ebbrt::IOBuf *>(mbuf.release()));
+        ebbrt::event_manager->SpawnRemote(
+            [ this, b = std::move(buf), pinfo ]() mutable {
+              umm::proxy->ProcessIncoming(std::move(b), std::move(pinfo));
+            },
+            target_cpu);
+        return;
+      }
+
+    // Appy TCP port masquerading
+    if (!umm::UmProxy::nat_masquerade_in(mbuf)) {
       return;
     }
-  } else if (ethtype == 0x86dd) { // ignore IPv6
-      kprintf("UmProxy ignore IPV6 noise\n");
-    // DROP PACKET AND RETURN
+
+    // Disable instance yield when external TCP packet has non-zero payload
+    if (payload_len > 0) {
+      // Signal yield for external TCP packet with non-zero payload
+      umm::manager->SignalNoYield(target_umi);
+      umm::manager->SignalResume(target_umi);
+    }
+    } // End external TCP processing
+  } else {
+    // Internal TCP processing
+    if (mbuf->Length() >=
+        (sizeof(ebbrt::EthernetHeader) + sizeof(ebbrt::Ipv4Header) +
+         sizeof(ebbrt::TcpHeader))) {
+      auto dp = mbuf->GetDataPointer();
+      dp.Advance(sizeof(ebbrt::EthernetHeader));
+      auto ip = dp.Get<ebbrt::Ipv4Header>();
+      if (ip.proto != 0x6) {
+        goto post_masq;
+      }
+      auto tcp = dp.Get<ebbrt::TcpHeader>();
+
+      // Confirm the destination instance for this packet 
+      auto host_src_port = ebbrt::ntohs(tcp.src_port);
+      if (tcp.Flags() & ebbrt::kTcpSyn) {
+        //TODO: confirm no kTcpAck
+        root_.SetupInternalPortMapping(target_umi, host_src_port);
+      } else {
+        target_umi = root_.InternalPortLookup(host_src_port);
+      }
+    }
+  } // End internal TCP processing
+
+post_masq:
+  /** Set the TCP/UDP checksum for incoming packets */
+  // TODO: Move below into nat_postprocess_in
+  if (pinfo.flags & ebbrt::PacketInfo::kNeedsCsum) {
+    if (pinfo.csum_offset == 6) { // UDP
+      /* UDP header checksum is optional so we clear the value */
+      kabort("UDP checksum not yet supported\n");
+      //mbuf->Advance(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
+      //auto udp_header = reinterpret_cast<ebbrt::UdpHeader *>(mbuf->MutData());
+      //udp_header->checksum = 0;
+      //mbuf->Retreat(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
+    } else if (pinfo.csum_offset == 16) { // TCP
+      /* For TCP we compute the checksum with a pseudo IP header */
+      mbuf->Advance(sizeof(ebbrt::EthernetHeader));
+      auto ip_header = reinterpret_cast<const ebbrt::Ipv4Header *>(mbuf->Data());
+      auto src_addr = ip_header->src;
+      auto dst_addr = ip_header->dst;
+      mbuf->Advance(sizeof(ebbrt::Ipv4Header));
+      auto tcp_header = reinterpret_cast<ebbrt::TcpHeader *>(mbuf->MutData());
+      tcp_header->checksum = 0;
+      tcp_header->checksum =
+          IpPseudoCsum(*mbuf, ebbrt::kIpProtoTCP, src_addr, dst_addr);
+      mbuf->Retreat(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
+    } else {
+      kabort("Error: Unknown packet checksum required ");
+    }
+  } // end if kNeedsCsum
+
+
+//#ifndef NDEBUG 
+//#if DEBUG_PRINT_IO 
+//  ebbrt::kprintf_force("UmProxy(c%lu): INCOMING POST-MASK\n",
+//                       (size_t)ebbrt::Cpu::GetMine());
+//#endif
+//  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+//#endif
+
+  // Get a reference of the target_umi from the UmManager
+  auto umi_ref = umm::manager->GetInstance(target_umi);
+  if(!umi_ref){
+    kprintf(YELLOW "Core %u received packet for halted/nonexistant "
+                "UMI #%u. DROPPING...\n" RESET,
+            (size_t)ebbrt::Cpu::GetMine(), target_umi);
+    nat_connection_reset(mbuf);
+    return;
+  }
+
+  /* Convert back to read-only buffer */
+  buf = std::unique_ptr<ebbrt::IOBuf>(
+      static_cast<ebbrt::IOBuf *>(mbuf.release()));
+  umi_ref->WritePacket(std::move(buf));
+}
+
+void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
+
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
+  // Preprocess
+  if (!umm::UmProxy::nat_preprocess_out(buf)) {
+    return;
+  }
+
+  // Masquerading
+  if (!umm::UmProxy::nat_masquerade_out(buf)) {
+    return;
+  }
+
+  // Postprocess
+  if (!umm::UmProxy::nat_postprocess_out(buf)) {
     return;
   }
 
 #ifndef NDEBUG /// DEBUG OUTPUT
 #if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO INCOMING PRE-MASK (lo<-umi) len=%d chain_len=%d\n",
+  ebbrt::kprintf_force("UmProxy(c%lu): OUTGOING POST-MASK (<-umi) len=%d chain_len=%d\n",
                        (size_t)ebbrt::Cpu::GetMine(),
                     buf->ComputeChainDataLength(),
                     buf->CountChainElements());
@@ -208,99 +495,142 @@ void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
   umm::UmProxy::DebugPrint(buf->GetDataPointer());
 #endif
 
-  // MASQUERADING
-  //NAT::Outbound::Masquerade
-  nat_masquerade_out(buf);
+  if (internal_destination(buf)) {
+    if (buf->Length() >=
+        (sizeof(ebbrt::EthernetHeader) + sizeof(ebbrt::Ipv4Header) +
+         sizeof(ebbrt::TcpHeader))) {
+      auto dp = buf->GetDataPointer();
+      dp.Advance(sizeof(ebbrt::EthernetHeader));
+      auto ip = dp.Get<ebbrt::Ipv4Header>();
+      if (ip.proto != 0x6) {
+        goto post_check;
+      }
+      auto tcp = dp.Get<ebbrt::TcpHeader>();
+      auto host_dst_port = ebbrt::ntohs(tcp.dst_port);
+      auto target_umi = root_.InternalPortLookup(host_dst_port);
+      auto umi_ref = umm::manager->GetInstance(target_umi);
+      if (!umi_ref) {
+        kprintf(RED "ERROR! Core %u sending packet for halted/nonexistant "
+                    "UMI #%u. DROPPING...\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine(), target_umi);
+        return;
+      }
+    }
+  // Send packet to the LO interface
+  post_check:
+    root_.lo.itf_.Receive(std::move(buf));
+  } else {
+    /*
+      ebbrt::PackerInfo pinfo;
+      uint8_t flags{0};
+      uint8_t gso_type{0};
+      uint16_t hdr_len{0};
+      uint16_t gso_size{0};
+      uint16_t csum_start{0};
+      uint16_t csum_offset{0};
+    */
+    ebbrt::PacketInfo pinfo;
+    pinfo.flags |= ebbrt::PacketInfo::kNeedsCsum;
+    pinfo.csum_start =
+        sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader);
+    pinfo.csum_offset = 16; // checksum is 16 bytes into the TCP header
 
-#ifndef NDEBUG /// DEBUG OUTPUT
-#if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-                       (size_t)ebbrt::Cpu::GetMine(),
-                    buf->ComputeChainDataLength(),
-                    buf->CountChainElements());
-#endif
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
-#endif
+    auto dp = buf->GetMutDataPointer();
+    auto &eth = dp.Get<ebbrt::EthernetHeader>();
+    auto ethtype = ebbrt::ntohs(eth.type);
+    auto ip = dp.Get<ebbrt::Ipv4Header>();
+    auto &ift = ebbrt::network_manager->GetInterface();
+    if (ip.proto == 0x6) {
+      auto tcp = dp.Get<ebbrt::TcpHeader>();
+      auto payload_len = buf->Length() - tcp.HdrLen() -
+                         sizeof(ebbrt::Ipv4Header) -
+                         sizeof(ebbrt::EthernetHeader);
+      if (payload_len > 0) {
+        // Signal yield for external TCP packet with non-zero payload
+        umm::manager->SignalYield(umi_id_);
+        // umm::manager->ActiveInstance()->yield_flag = true;
+        // ebbrt::event_manager->SpawnLocal([this]() {  },
+        //                                 true);
+      }
+    }
 
-  if(internal_destination(buf)){
-    // Send packet to the LO interface
-    root_.itf_.Receive(std::move(buf));
+    // What does EthArpSend do?...
+    //    - retreat buffer to start of eth header
+    //    - checks eth for broadcast, multicast, external send
+    //    - for external send, set dest_ip to gatewate, lookup in arp cache
+    //        - If hit, set gw maddr and do send
+    //        - If miss, trigger arp request, send once resolved
+    buf->Advance(sizeof(ebbrt::EthernetHeader)); // EthArpSend will retreat
+    ift.EthArpSend(ethtype, ip, std::move(buf), pinfo);
   }
-
   return;
 }
 
+
 std::unique_ptr<ebbrt::MutIOBuf> umm::UmProxy::raw_to_iobuf(const void *data,
-                                                         const size_t len) {
+                                                            const size_t len) {
   kassert(len > sizeof(ebbrt::EthernetHeader));
   auto ibuf = ebbrt::MakeUniqueIOBuf(len);
   memcpy((void *)ibuf->MutData(), data, len);
   return static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
 }
 
-void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
-                           ebbrt::PacketInfo pinfo) {
-  // Queue network data to be read into the UM instance (via UmRead)
-  if (!buf->ComputeChainDataLength())
-    return;
-  um_recv_queue_.emplace(std::move(buf));
+
+void umm::UmProxy::SetActiveInstance(umm::umi::id id) {
+  kbugon(umi_id_ == id);
+  // clear the mapping cache
+  umi_id_ = id; // set active instance 
+  port_map_cache_.clear();
 }
 
-ebbrt::EthernetAddress umm::UmProxy::UmMac() {
-  size_t core = ebbrt::Cpu::GetMine();
-  return {{0x06, 0xfe, 0x00, 0x00, 0x00, (uint8_t)core}};
+void umm::UmProxy::RemoveInstanceState(umm::umi::id id) {
+  if (umi_id_ == id) {
+    umi_id_ = 0; // We no longer have an active instance
+    port_map_cache_.clear();
+  }
+  root_.FreePorts(id);
 }
 
-uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
-  kassert(len > sizeof(ebbrt::EthernetHeader));
-  auto eth = (ebbrt::EthernetHeader *)(data);
-  auto ethtype = ebbrt::ntohs(eth->type);
-  if (ethtype == ebbrt::kEthTypeArp) {
-    auto arp = (ebbrt::ArpPacket *)((const uint8_t *)data +
-                                    sizeof(ebbrt::EthernetHeader));
-    if (arp->spa == arp->tpa) { // Gratuitous ARP
-      kprintf("UmProxy ignore gratuitous ARP\n");
-      return len;
+
+uint16_t umm::UmProxy::swizzle_port_in(uint16_t nport) {
+  /* search in the core local cache */
+  auto it = port_map_cache_.left.find(nport);
+  if (it != port_map_cache_.left.end()){
+    // Cache Hit
+    auto iport = std::get<2>(it->second);
+    //kprintf("Swizzle port IN %u->%u\n", nport,iport );
+    return iport; 
+  } else {
+    // Miss, get the mapping from the root
+    auto mapping = root_.ExternalPortLookup(nport);
+    kassert(mapping != null_port_mapping_);
+    //umm::umi::core umi = std::get<0>(it->second);
+    //umm::umi::id core = std::get<1>(it->second);
+    auto iport = std::get<2>(mapping);
+    if(umi_id_ == std::get<0>(mapping)){
+      port_map_cache_.insert(
+          port_map_t::value_type(nport, internal_port(iport, umi_id_)));
     }
-  } else if (ethtype == 0x86dd) { // ignore IPv6
-    // kprintf("UmProxy ignore type=0x%x len=%d\n", ethtype, len);
-    return len;
+    return iport;
   }
-  auto ibuf = ebbrt::MakeUniqueIOBuf(len);
-  memcpy((void *)ibuf->MutData(), data, len);
-  auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
-
-#ifndef NDEBUG /// DEBUG OUTPUT
-#if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-                       (size_t)ebbrt::Cpu::GetMine(),
-                    buf->ComputeChainDataLength(),
-                    buf->CountChainElements());
-#endif
-  umm::UmProxy::DebugPrint(buf->GetDataPointer());
-#endif 
-
-  root_.itf_.Receive(std::move(buf));
-  return len;
 }
 
-uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
-  if (um_recv_queue_.empty()) {
-    return 0;
+uint16_t umm::UmProxy::swizzle_port_out(uint16_t iport) {
+  uint16_t ret;
+  /* search in the core-local cache for a match */
+  auto it = port_map_cache_.right.find(internal_port(iport, umi_id_));
+  if (it != port_map_cache_.right.end()) {
+    // Hit
+    //kprintf("Swizzle port OUT %u->%u\n", iport, it->second);
+    ret = it->second;
+  } else {
+    // Miss, get a NAT port from the root
+    auto nport = root_.SetupExternalPortMapping(umi_id_, iport);
+    port_map_cache_.insert(port_map_t::value_type(nport, internal_port(iport, umi_id_)));
+    ret = nport;
   }
-  kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
-  // remove the first element from the queue and pass it upto the instance
-  auto buf = std::move(um_recv_queue_.front());
-  um_recv_queue_.pop();
-  auto in_len = buf->ComputeChainDataLength();
-  // Assert we are not trying to send more than can be read
-  kassert(len >= in_len);
-  auto dp = buf->GetDataPointer();
-  dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
-  // kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
-  return in_len;
+  return ret;
 }
-
 
 void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
   auto eh = dp.Get<ebbrt::EthernetHeader>();

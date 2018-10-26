@@ -92,10 +92,9 @@ void AppMain() {
   uint64_t argc = Solo5BootArguments(umi->sv_.GetRegionByName("usr").start,
                                      SOLO5_USR_REGION_SIZE, my_cmd);
   umi->SetArguments(argc);
-  umm::manager->Load(std::move(umi));
 
   // Set breakpoint for snapshot
-  ebbrt::Future<umm::UmSV*> snap_f = umm::manager->SetCheckpoint(
+  ebbrt::Future<umm::UmSV*> snap_f = umi->SetCheckpoint(
       umm::ElfLoader::GetSymbolAddress("uv_uptime"));
   snap_f.Then([](ebbrt::Future<umm::UmSV*> snap_f) {
     // Spawn asyncronously allows the debug context clean up correctly
@@ -108,12 +107,10 @@ void AppMain() {
   }); // End snap_f.Then(...)
 
   // Start the execution
-  umm::manager->runSV();
-  umm::manager->Unload();
+  umm::manager->Run(std::move(umi));
   ebbrt::kprintf_force("returned from instance... Redeploying snapshop & connecting in 5 seconds..\n");
   ebbrt::clock::SleepMilli(5000);
   auto umi2 = std::make_unique<umm::UmInstance>(*snap_sv);
-  umm::manager->Load(std::move(umi2));
   ebbrt::event_manager->SpawnLocal(
       [=]() {
         ebbrt::NetworkManager::TcpPcb pcb;
@@ -125,7 +122,6 @@ void AppMain() {
         app_session->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080);
       },
       /* force_async = */ true);
-  umm::manager->runSV();
-  umm::manager->Unload();
+  umm::manager->Run(std::move(umi2));
   ebbrt::kprintf("Done!\n");
 }

@@ -6,12 +6,15 @@
 #include <ebbrt/native/PageAllocator.h>
 
 #include "UmInstance.h"
+#include "UmManager.h"
 #include "umm-internal.h"
 
 #include "UmPgTblMgr.h" // User page HACK XXX
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
+/** XXX: Takes a virtual address and length and marks the pages USER */ 
+// TODO: Not this..
 void hackSetPgUsr(uintptr_t vaddr, int bytes){
   // HACK: Setting the whole page user accessible. Totally unacceptable. XXX
 
@@ -29,7 +32,6 @@ void hackSetPgUsr(uintptr_t vaddr, int bytes){
 
   // print path to page
   // umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
-
 }
 
 void umm::UmInstance::SetArguments(const uint64_t argc,
@@ -39,7 +41,6 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
   bi = malloc(sizeof(ukvm_boot_info));
   // printf(RED "Boot info at %p\n" RESET, bi);
   hackSetPgUsr((uintptr_t)bi, sizeof(ukvm_boot_info));
-
   auto kvm_args = (ukvm_boot_info *) argc;
   std::memcpy(bi, (const void *)kvm_args, sizeof(ukvm_boot_info));
   {
@@ -49,7 +50,6 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
     char *tmp = (char *) malloc(strlen(bi_v->cmdline) + 1);
     // printf(RED "cmdline at %p\n" RESET, tmp);
     hackSetPgUsr((uintptr_t)tmp, strlen(bi_v->cmdline) + 1);
-
     // Do the copy.
     strcpy(tmp, bi_v->cmdline);
     // Swing ptr intentionally dropping old.
@@ -59,6 +59,56 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
   sv_.ef.rdi = (uint64_t) bi;
   if (argv)
     sv_.ef.rsi = (uint64_t)argv;
+}
+
+ebbrt::Future<umm::UmSV*> umm::UmInstance::SetCheckpoint(uintptr_t vaddr){
+  kassert(snap_addr == 0);
+  snap_addr = vaddr;
+  snap_p= new ebbrt::Promise<umm::UmSV*>();
+  return snap_p->GetFuture();
+}
+
+void umm::UmInstance::WritePacket(std::unique_ptr<ebbrt::IOBuf> buf){
+  umi_recv_queue_.emplace(std::move(buf));
+}
+
+std::unique_ptr<ebbrt::IOBuf> umm::UmInstance::ReadPacket(){
+  if(!HasData())
+    return nullptr;
+  auto buf = std::move(umi_recv_queue_.front());
+  umi_recv_queue_.pop();
+  return std::move(buf);
+}
+
+void umm::UmInstance::Activate(){
+  kassert(!active_);
+  kassert(context_);
+  // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
+  active_ = true;
+  ebbrt::event_manager->ActivateContext(std::move(*context_));
+}
+
+void umm::UmInstance::Deactivate() {
+  kassert(active_);
+  active_ = false;
+  context_ = new ebbrt::EventManager::EventContext();
+  kprintf(YELLOW "%u" RESET, id_);
+  ebbrt::event_manager->SaveContext(*context_);
+  kprintf(GREEN "%u" RESET, id_);
+}
+
+void umm::UmInstance::EnableYield() {
+  if(!yield_flag_){
+    kprintf(CYAN "UMI #%d yield enabled\n" RESET, id_);
+    yield_flag_ = true;
+  }
+}
+
+void umm::UmInstance::DisableYield() {
+  if(yield_flag_){
+    kprintf(CYAN "UMI #%d yield disabled\n" RESET, id_);
+    yield_flag_ = false;
+  }
 }
 
 void umm::UmInstance::Print() {
@@ -113,4 +163,26 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
   std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
 
   return bp_start_addr;
+}
+
+void umm::UmInstance::logFault(x86_64::PgFaultErrorCode ec){
+  pfc.pgFaults++;
+  // Write or Read?
+  if(ec.WR){
+    if(ec.P){
+      // If present, COW
+      pfc.cowFaults++;
+    }else{
+      pfc.wrFaults++;
+    }
+  } else {
+    pfc.rdFaults++;
+  }
+}
+
+void umm::UmInstance::PgFtCtrs::dump_ctrs(){
+  kprintf_force("total: %lu\n", pgFaults);
+  kprintf_force("rd:    %lu\n", rdFaults);
+  kprintf_force("wr:    %lu\n", wrFaults);
+  kprintf_force("cow:   %lu\n", cowFaults);
 }

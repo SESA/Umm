@@ -11,6 +11,8 @@
 #include "UmManager.h"  // hack to get per core copied pages count.
 #include "UmPgTblMgr.h"
 #include "UmManager.h"
+// #include <Umm.h>
+#include <vector>
 
 #define printf kprintf
 

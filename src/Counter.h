@@ -6,6 +6,8 @@
 #include <ebbrt/native/Debug.h>
 
 // NOTE: Don't import me into your code, use umm manager.
+// XXX: Removed from Manager
+// TODO: Integrate into Instance 
 
 class Counter {
 public:

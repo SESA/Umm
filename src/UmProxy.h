@@ -6,6 +6,7 @@
 #define UMM_UM_PROXY_H_
 
 #include <queue>
+#include <cstdint>
 
 #include <ebbrt/Cpu.h>
 #include <ebbrt/EbbId.h>
@@ -17,26 +18,61 @@
 #include <ebbrt/native/NetTcpHandler.h>
 #include <ebbrt/native/NetUdp.h>
 
+#include <boost/bimap.hpp>
+#include <boost/icl/interval.hpp>
+#include <boost/icl/interval_set.hpp>
+
+#include "LoopbackDriver.h"
+#include "UmInstance.h"
 #include "umm-common.h"
 
 namespace umm {
 
-class UmProxy;
+typedef uint16_t external_port_t;
+typedef std::tuple<umi::id, umi::core, uint16_t> internal_port_t;
 
-/**
- *  LoopbackDriver - Loopback Device Driver
- */
-class LoopbackDriver : public ebbrt::EthernetDevice {
+namespace {
+typedef boost::icl::interval_set<external_port_t> port_set_t;
+typedef boost::bimap<external_port_t, internal_port_t> port_map_t;
+typedef port_map_t::left_map::const_iterator port_map_left_iterator_t;
+typedef port_map_t::right_map::const_iterator port_map_right_iterator_t;
+typedef std::unordered_multimap<umi::id, external_port_t> port_owner_map_t;
+typedef port_owner_map_t::iterator port_owner_map_iterator_t;
+
+const internal_port_t null_port_mapping_(0, 0, 0);
+const uint16_t port_min = 256;
+const uint16_t port_max = 32000;
+}
+
+class ProxyRoot {
 public:
-  LoopbackDriver();
-  void Send(std::unique_ptr<ebbrt::IOBuf> buf,
-            ebbrt::PacketInfo pinfo) override;
-  const ebbrt::EthernetAddress &GetMacAddress() override { return mac_addr_; }
+  typedef std::pair<size_t, uint64_t> umi_location; // <core, umiID>
+  explicit ProxyRoot(const LoopbackDriver &root)
+      : lo(const_cast<LoopbackDriver &>(root)) {
+    port_set_ += boost::icl::interval<uint16_t>::type(port_min, port_max);
+  }
+
+  /* Allocate and register a new port for this Um Instance */
+  uint16_t SetupExternalPortMapping(umi::id, uint16_t);
+  void SetupInternalPortMapping(umi::id, uint16_t);
+  internal_port_t ExternalPortLookup(external_port_t);
+  umi::id InternalPortLookup(uint16_t);
+	/* Free the associated ports of umi */
+	void FreePorts(umi::id);
 
 private:
-  ebbrt::EbbRef<UmProxy> proxy_;
-  ebbrt::EthernetAddress mac_addr_;
-  ebbrt::NetworkManager::Interface &itf_;
+  uint16_t allocate_port();
+  void free_port(uint16_t);
+  LoopbackDriver &lo;
+  ebbrt::SpinLock port_lock_;
+  ebbrt::SpinLock host_map_lock_;
+
+  /** NAT state */
+  port_set_t port_set_; /* set of allocatable ports */
+  port_map_t master_port_map_; /* map of allocated ports */
+  port_owner_map_t port_owner_map_; /* map of allocated ports */
+  
+  std::unordered_map<uint16_t, umi::id> host_src_port_map_;
 
   friend class UmProxy;
 };
@@ -44,93 +80,98 @@ private:
 /**
  *  UmProxy - Ebb that manages per-core network IO of SV instances
  */
-class UmProxy : public ebbrt::MulticoreEbb<UmProxy, LoopbackDriver> {
+class UmProxy : public ebbrt::MulticoreEbb<UmProxy, ProxyRoot> {
 public:
   /** Class-wide UmProxy state & initialization */
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmProxy");
   static void Init();
   static void DebugPrint(ebbrt::IOBuf::DataPointer dp);
+	// TODO: make private?
   static std::unique_ptr<ebbrt::MutIOBuf> raw_to_iobuf(const void *data,
                                                     const size_t len);
+  static internal_port_t internal_port(uint16_t port, umi::id id, 
+                                size_t core = (size_t)ebbrt::Cpu::GetMine()) {
+    return std::make_tuple(id, core, port);
+  }
 
+	// TODO: make private?
   static ebbrt::EthernetAddress client_internal_macaddr(){
     return {{0x06, 0xfe, 0x00, 0x00, 0x00, 0x00}};
   };
 
+	// TODO: make private?
   static ebbrt::Ipv4Address client_internal_ipv4() {
     return {{169, 254, 1, 0}};
   };
 
-  static ebbrt::Ipv4Address client_local_ipv4(){
-    size_t core = ebbrt::Cpu::GetMine();
-    return {{169, 254, 254, (uint8_t)core}};
-  };
-
-  static ebbrt::EthernetAddress client_local_macaddr(){
-    size_t core = ebbrt::Cpu::GetMine();
-    return {{0x06, 0xfe, 0x01, 0x02, 0x03, (uint8_t)core}};
-  };
-
+	// TODO: make private?
   static ebbrt::Ipv4Address host_internal_ipv4() { return {{169, 254, 0, 1}}; }
 
+	// TODO: make private?
   ebbrt::EthernetAddress host_internal_macaddr(){
-    return root_.GetMacAddress();
+    return root_.lo.GetMacAddress();
   }
 
+	// TODO: make private?
   ebbrt::Ipv4Address host_external_ipv4() {
     return ebbrt::network_manager->IpAddress();
   }
 
-//  ebbrt::EthernetAddress host_external_macaddr(){
-//    //return ebbrt::network_manager->MacAddress();
-//  }
-
-  explicit UmProxy(const LoopbackDriver &root) : root_(const_cast<LoopbackDriver&>(root)) {}
-
-  static bool internal_destination(std::unique_ptr<ebbrt::MutIOBuf> &buf);
-  static void nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &buf);
-  static void nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf> &buf);
-  static void nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf> &);
-  static void nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf> &);
+  explicit UmProxy(const ProxyRoot &root) : root_(const_cast<ProxyRoot&>(root)) {}
 
   /** ProcessOutgoing
-   *  Process packets from the UMI 
+   *  Process outgoing packet for an UMI source
    */
   void ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf);
 
-
-  /** ProcessIncomingPacket
-   *  Process packets to the UMI 
+  /** ProcessIncoming
+   *  Process incoming packer for an UMI destination
    */
-  void ProcessIncomingPacket(std::unique_ptr<ebbrt::IOBuf>);
+  void ProcessIncoming(std::unique_ptr<ebbrt::IOBuf>, ebbrt::PacketInfo pinfo);
 
-  /**	UmMac - Returns mac address for an Um instance */
-  ebbrt::EthernetAddress UmMac();
-
-  /**	UmWrite - Outgoing data from the UM instance
-   *  returns the amount of data written
-   */
-  uint32_t UmWrite(const void *data, const size_t len);
-
-  /** UmRead - Incoming data read to UM instance 
+  /** InstanceRead - Read packet (Called by instance)
    *  returns the amount of data read
    */
-  uint32_t UmRead(void *data, const size_t len);
+  uint32_t InstanceRead(void *data, const size_t len);
 
-  /**	UmHasData - Returns 'true' if there is data to be read */
-  bool UmHasData() { return !um_recv_queue_.empty(); }
-  void UmClearData() {
-    um_recv_queue_ = std::queue<std::unique_ptr<ebbrt::IOBuf>>();
-  }
+  /** InstanceHasData - Return true if there is data 
+   */
+  bool InstanceHasData();
 
-  /** Receive data from the ebbrt network stack */
-  void Receive(std::unique_ptr<ebbrt::IOBuf> buf, ebbrt::PacketInfo pinfo);
+  /** SetActiveInstance - Clears transient state and sets a "loaded" umi_id */ 
+  void SetActiveInstance(umm::umi::id id);
+
+  /** RemoveInstanceState - Clears all proxy state for a given instance */
+  void RemoveInstanceState(umm::umi::id id); 
+  
 
 private:
-  std::queue<std::unique_ptr<ebbrt::IOBuf>> um_recv_queue_;
-  LoopbackDriver &root_;
+  /* Translate nat port to internal src port */
+  uint16_t swizzle_port_in(uint16_t);
+  /* Translate internal src port to nat port */
+  uint16_t swizzle_port_out(uint16_t);
+  bool nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf> &);
+  bool nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &);
+  /* Overwrite the destination IP and MAC with their internal values, apply port swizzle for external */
+  bool nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf> &);
+  bool nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf> &);
+  bool nat_postprocess_in(std::unique_ptr<ebbrt::MutIOBuf> &);
+  bool nat_postprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &);
+  void nat_connection_reset(std::unique_ptr<ebbrt::MutIOBuf>& buf);
+  /* Return true if destination is (host) internal */
+  bool internal_destination(std::unique_ptr<ebbrt::MutIOBuf> &);
+  /* Return true if source is (host) internal */
+  bool internal_source(std::unique_ptr<ebbrt::MutIOBuf> &);
+  /* Return internal port identifier for this core/umi */
+
+  /* Instance IO state */
+  umm::umi::id umi_id_;
+
+  ProxyRoot &root_;
+  port_map_t port_map_cache_; /* core-local port map cache */
 };
 
 constexpr auto proxy = ebbrt::EbbRef<UmProxy>(UmProxy::global_id);
+
 }
 #endif // UMM_UM_PROXY_H_

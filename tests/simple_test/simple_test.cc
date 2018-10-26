@@ -30,7 +30,6 @@ void AppMain() {
   // Create instance.
   auto umi = initInstance();
 
-  umm::manager->Load(std::move(umi));
-  umm::manager->runSV();
+  umm::manager->Run(std::move(umi));
 	ebbrt::acpi::PowerOff();
 }
