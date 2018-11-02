@@ -50,8 +50,59 @@ public:
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmProxy");
   static void Init();
   static void DebugPrint(ebbrt::IOBuf::DataPointer dp);
+  static std::unique_ptr<ebbrt::MutIOBuf> raw_to_iobuf(const void *data,
+                                                    const size_t len);
 
-  explicit UmProxy(const LoopbackDriver &root) : root_(root) {}
+  static ebbrt::EthernetAddress client_internal_macaddr(){
+    return {{0x06, 0xfe, 0x00, 0x00, 0x00, 0x00}};
+  };
+
+  static ebbrt::Ipv4Address client_internal_ipv4() {
+    return {{169, 254, 1, 0}};
+  };
+
+  static ebbrt::Ipv4Address client_local_ipv4(){
+    size_t core = ebbrt::Cpu::GetMine();
+    return {{169, 254, 254, (uint8_t)core}};
+  };
+
+  static ebbrt::EthernetAddress client_local_macaddr(){
+    size_t core = ebbrt::Cpu::GetMine();
+    return {{0x06, 0xfe, 0x01, 0x02, 0x03, (uint8_t)core}};
+  };
+
+  static ebbrt::Ipv4Address host_internal_ipv4() { return {{169, 254, 0, 1}}; }
+
+  ebbrt::EthernetAddress host_internal_macaddr(){
+    return root_.GetMacAddress();
+  }
+
+  ebbrt::Ipv4Address host_external_ipv4() {
+    return ebbrt::network_manager->IpAddress();
+  }
+
+  ebbrt::EthernetAddress host_external_macaddr(){
+    return ebbrt::network_manager->MacAddress();
+  }
+
+  explicit UmProxy(const LoopbackDriver &root) : root_(const_cast<LoopbackDriver&>(root)) {}
+
+  static bool internal_destination(std::unique_ptr<ebbrt::MutIOBuf> &buf);
+  static void nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &buf);
+  static void nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf> &buf);
+  static void nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf> &);
+  static void nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf> &);
+
+  /** ProcessOutgoing
+   *  Process packets from the UMI 
+   */
+  void ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf);
+
+
+  /** ProcessIncomingPacket
+   *  Process packets to the UMI 
+   */
+  void ProcessIncomingPacket(std::unique_ptr<ebbrt::IOBuf>);
 
   /**	UmMac - Returns mac address for an Um instance */
   ebbrt::EthernetAddress UmMac();
@@ -77,7 +128,7 @@ public:
 
 private:
   std::queue<std::unique_ptr<ebbrt::IOBuf>> um_recv_queue_;
-  const LoopbackDriver &root_;
+  LoopbackDriver &root_;
 };
 
 constexpr auto proxy = ebbrt::EbbRef<UmProxy>(UmProxy::global_id);
