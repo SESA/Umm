@@ -9,12 +9,12 @@
 #include "umm-internal.h"
 
 // DEBUG NETWORK TRACE
-#define DEBUG_PRINT_ETH 0
-#define DEBUG_PRINT_ARP 0
-#define DEBUG_PRINT_IP  0
-#define DEBUG_PRINT_TCP 0
-#define DEBUG_PRINT_UDP 0
-#define DEBUG_PRINT_IO  0
+#define DEBUG_PRINT_ETH 1
+#define DEBUG_PRINT_ARP 1
+#define DEBUG_PRINT_IP  1
+#define DEBUG_PRINT_TCP 1
+#define DEBUG_PRINT_UDP 1
+#define DEBUG_PRINT_IO  1
 
 void umm::UmProxy::Init() {
   // Setup Ebb translations
@@ -22,14 +22,9 @@ void umm::UmProxy::Init() {
   Create(lo_dev, UmProxy::global_id);
 }
 
-ebbrt::EthernetAddress umm::UmProxy::UmMac() {
-  size_t core = ebbrt::Cpu::GetMine();
-  return {{0x06, 0xfe, 0x00, 0x00, 0x00, (uint8_t)core}};
-}
-
 umm::LoopbackDriver::LoopbackDriver()
     : itf_(ebbrt::network_manager->NewLoopback(*this)) {
-  /** We've hard-coded the instance's ip and mac address for now */
+  /** Hard-coded the LO interface ipv4 and mac address */
   mac_addr_ = {{0x06, 0xfe, 0x22, 0x22, 0x22, 0x22}};
   auto addr = new ebbrt::NetworkManager::Interface::ItfAddress();
   addr->address = {{169, 254, 0, 1}};
@@ -39,60 +34,23 @@ umm::LoopbackDriver::LoopbackDriver()
       std::unique_ptr<ebbrt::NetworkManager::Interface::ItfAddress>(addr));
 }
 
-
-uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
-  kassert(len > sizeof(ebbrt::EthernetHeader));
-  auto eth = (ebbrt::EthernetHeader *)(data);
-  auto ethtype = ebbrt::ntohs(eth->type);
-  if (ethtype == ebbrt::kEthTypeArp) {
-    auto arp = (ebbrt::ArpPacket *)((const uint8_t *)data +
-                                    sizeof(ebbrt::EthernetHeader));
-    if (arp->spa == arp->tpa) { // Gratuitous ARP
-      kprintf("UmProxy ignore gratuitous ARP\n");
-      return len;
-    }
-  } else if (ethtype == 0x86dd) { // ignore IPv6
-    // kprintf("UmProxy ignore type=0x%x len=%d\n", ethtype, len);
-    return len;
-  }
-  auto ibuf = ebbrt::MakeUniqueIOBuf(len);
-  memcpy((void *)ibuf->MutData(), data, len);
-  auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
+void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
+                               ebbrt::PacketInfo pinfo) {
 
 #ifndef NDEBUG /// DEBUG OUTPUT
 #if DEBUG_PRINT_IO
-  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
-                       (size_t)ebbrt::Cpu::GetMine(),
-                    buf->ComputeChainDataLength(),
-                    buf->CountChainElements());
+  ebbrt::kprintf_force("(C#%lu) LO OUTGOING PRE-MASK (lo->umi) len=%d chain_len=%d\n",
+                      (size_t)ebbrt::Cpu::GetMine(),
+                      buf->ComputeChainDataLength(),
+                      buf->CountChainElements());
 #endif
   umm::UmProxy::DebugPrint(buf->GetDataPointer());
-#endif 
+#endif
 
-  // TODO(jmcadden): Send buffer out asynchronously
-  // ebbrt::event_manager->SpawnLocal([ this, buf = std::move(buf) ]() { });
-  root_.itf_.Receive(std::move(buf));
-  return len;
-}
+  auto mbuf = std::unique_ptr<ebbrt::MutIOBuf>(static_cast<ebbrt::MutIOBuf *>(buf.release()));
+  umm::UmProxy::nat_masquerade_in(mbuf);
+  buf = std::unique_ptr<ebbrt::IOBuf>(static_cast<ebbrt::IOBuf *>(mbuf.release()));
 
-uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
-  if (um_recv_queue_.empty()) {
-    return 0;
-  }
-  // remove the first element from the queue and pass it upto the instance
-  auto buf = std::move(um_recv_queue_.front());
-  um_recv_queue_.pop();
-  auto in_len = buf->ComputeChainDataLength();
-  // Assert we are not trying to send more than can be read
-  kassert(len >= in_len);
-  auto dp = buf->GetDataPointer();
-  dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
-  // kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
-  return in_len;
-}
-
-void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
-                               ebbrt::PacketInfo pinfo) {
   /** Set the TCP/UDP checksum for outgoing packets */
   if (pinfo.flags & ebbrt::PacketInfo::kNeedsCsum) {
     if (pinfo.csum_offset == 6) { // UDP
@@ -105,6 +63,7 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
       mbuf->Retreat(sizeof(ebbrt::Ipv4Header) + sizeof(ebbrt::EthernetHeader));
       buf = std::unique_ptr<ebbrt::IOBuf>(static_cast<ebbrt::IOBuf *>(mbuf));
     } else if (pinfo.csum_offset == 16) { // TCP
+      kprintf("Computing TCP checksum \n");
       /* For TCP we compute the checksum with a pseudo IP header */
       buf->Advance(sizeof(ebbrt::EthernetHeader));
       auto ip_header = reinterpret_cast<const ebbrt::Ipv4Header *>(buf->Data());
@@ -136,14 +95,193 @@ void umm::LoopbackDriver::Send(std::unique_ptr<ebbrt::IOBuf> buf,
   umm::proxy->Receive(std::move(buf), std::move(pinfo));
 }
 
+
+bool umm::UmProxy::internal_destination(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+
+  auto dp = buf->GetMutDataPointer();
+  auto& eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
+
+  if (ethtype == ebbrt::kEthTypeArp) {
+    return true;
+  }
+
+  kassert(ethtype == ebbrt::kEthTypeIp);
+  auto iph = dp.Get<ebbrt::Ipv4Header>();
+  auto dst = iph.dst.toArray();
+  auto iip = host_internal_ipv4().toArray();
+  for (uint8_t i = 0; i < 4; ++i) {
+    if (dst[i] != iip[i]) {
+      ebbrt::kprintf_force(
+          "Destination IP is external:  %hhd.%hhd.%hhd.%hhd \n", 
+                       dst[0], dst[1], dst[2], dst[3]);
+      return false;
+    }
+  }
+  ebbrt::kprintf_force("Destination IP is internal:  %hhd.%hhd.%hhd.%hhd \n",
+                       dst[0], dst[1], dst[2], dst[3]);
+  return true;
+}
+
+void umm::UmProxy::nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf>& buf){}
+
+void umm::UmProxy::nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){}
+
+void umm::UmProxy::nat_masquerade_out(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+
+  auto dp = buf->GetMutDataPointer();
+  auto& eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
+
+  // Mask ethernet 
+  eth.src = client_local_macaddr();
+
+  if (ethtype == ebbrt::kEthTypeArp) {
+     auto& arp = dp.Get<ebbrt::ArpPacket>();
+     arp.sha = client_local_macaddr();
+     arp.spa = client_local_ipv4();
+  } else if (ethtype == ebbrt::kEthTypeIp) {
+    auto &ip = dp.Get<ebbrt::Ipv4Header>();
+    ip.src = client_local_ipv4();
+    ip.chksum = 0;
+    ip.chksum = ip.ComputeChecksum();
+  }
+}
+
+void umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
+
+  /* Overwrite the destination/target IP and MAC with thier internal values */
+
+  auto dp = buf->GetMutDataPointer();
+  auto& eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
+
+  // Don't overwrite the destination mac of ARP messages
+  if (ethtype == ebbrt::kEthTypeArp) {
+    auto &arp = dp.Get<ebbrt::ArpPacket>();
+    arp.tpa = client_internal_ipv4();
+  } else if (ethtype == ebbrt::kEthTypeIp) {
+    eth.dst = client_internal_macaddr();
+    auto &ip = dp.Get<ebbrt::Ipv4Header>();
+    ip.dst = client_internal_ipv4();
+    ip.chksum = 0;
+    ip.chksum = ip.ComputeChecksum();
+  }
+}
+
+void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
+
+  // PREPROCESSING
+  kassert(buf->Length() >= sizeof(ebbrt::EthernetHeader));
+  auto dp = buf->GetMutDataPointer();
+  auto& eth = dp.Get<ebbrt::EthernetHeader>();
+  auto ethtype = ebbrt::ntohs(eth.type);
+  if (ethtype == ebbrt::kEthTypeArp) {
+    auto arp = dp.GetNoAdvance<ebbrt::ArpPacket>();
+    if (arp.spa == arp.tpa) { // Gratuitous ARP
+      kprintf("UmProxy ignore gratuitous ARP\n");
+      // DROP PACKET AND RETURN
+      return;
+    }
+  } else if (ethtype == 0x86dd) { // ignore IPv6
+      kprintf("UmProxy ignore IPV6 noise\n");
+    // DROP PACKET AND RETURN
+    return;
+  }
+
+  // MASQUERADING
+  //NAT::Outbound::Masquerade
+  nat_masquerade_out(buf);
+
+#ifndef NDEBUG /// DEBUG OUTPUT
+#if DEBUG_PRINT_IO
+  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+                       (size_t)ebbrt::Cpu::GetMine(),
+                    buf->ComputeChainDataLength(),
+                    buf->CountChainElements());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif
+
+  if(internal_destination(buf)){
+    // Send packet to the LO interface
+    root_.itf_.Receive(std::move(buf));
+  }
+
+  return;
+}
+
+std::unique_ptr<ebbrt::MutIOBuf> umm::UmProxy::raw_to_iobuf(const void *data,
+                                                         const size_t len) {
+  kassert(len > sizeof(ebbrt::EthernetHeader));
+  auto ibuf = ebbrt::MakeUniqueIOBuf(len);
+  memcpy((void *)ibuf->MutData(), data, len);
+  return static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
+}
+
 void umm::UmProxy::Receive(std::unique_ptr<ebbrt::IOBuf> buf,
                            ebbrt::PacketInfo pinfo) {
-  // kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
   // Queue network data to be read into the UM instance (via UmRead)
   if (!buf->ComputeChainDataLength())
     return;
   um_recv_queue_.emplace(std::move(buf));
 }
+
+ebbrt::EthernetAddress umm::UmProxy::UmMac() {
+  size_t core = ebbrt::Cpu::GetMine();
+  return {{0x06, 0xfe, 0x00, 0x00, 0x00, (uint8_t)core}};
+}
+
+uint32_t umm::UmProxy::UmWrite(const void *data, const size_t len) {
+  kassert(len > sizeof(ebbrt::EthernetHeader));
+  auto eth = (ebbrt::EthernetHeader *)(data);
+  auto ethtype = ebbrt::ntohs(eth->type);
+  if (ethtype == ebbrt::kEthTypeArp) {
+    auto arp = (ebbrt::ArpPacket *)((const uint8_t *)data +
+                                    sizeof(ebbrt::EthernetHeader));
+    if (arp->spa == arp->tpa) { // Gratuitous ARP
+      kprintf("UmProxy ignore gratuitous ARP\n");
+      return len;
+    }
+  } else if (ethtype == 0x86dd) { // ignore IPv6
+    // kprintf("UmProxy ignore type=0x%x len=%d\n", ethtype, len);
+    return len;
+  }
+  auto ibuf = ebbrt::MakeUniqueIOBuf(len);
+  memcpy((void *)ibuf->MutData(), data, len);
+  auto buf = static_cast<std::unique_ptr<ebbrt::MutIOBuf>>(std::move(ibuf));
+
+#ifndef NDEBUG /// DEBUG OUTPUT
+#if DEBUG_PRINT_IO
+  ebbrt::kprintf_force("(C#%lu) LO INCOMING (lo<-umi) len=%d chain_len=%d\n",
+                       (size_t)ebbrt::Cpu::GetMine(),
+                    buf->ComputeChainDataLength(),
+                    buf->CountChainElements());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif 
+
+  root_.itf_.Receive(std::move(buf));
+  return len;
+}
+
+uint32_t umm::UmProxy::UmRead(void *data, const size_t len) {
+  if (um_recv_queue_.empty()) {
+    return 0;
+  }
+  kprintf("Core %u: received message for Um\n", (size_t)ebbrt::Cpu::GetMine());
+  // remove the first element from the queue and pass it upto the instance
+  auto buf = std::move(um_recv_queue_.front());
+  um_recv_queue_.pop();
+  auto in_len = buf->ComputeChainDataLength();
+  // Assert we are not trying to send more than can be read
+  kassert(len >= in_len);
+  auto dp = buf->GetDataPointer();
+  dp.GetNoAdvance(in_len, static_cast<uint8_t *>(data));
+  // kprintf("Core %u: Um read in data\n", (size_t)ebbrt::Cpu::GetMine());
+  return in_len;
+}
+
 
 void umm::UmProxy::DebugPrint(ebbrt::IOBuf::DataPointer dp) {
   auto eh = dp.Get<ebbrt::EthernetHeader>();
