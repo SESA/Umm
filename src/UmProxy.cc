@@ -159,7 +159,16 @@ void umm::UmProxy::nat_masquerade_in(std::unique_ptr<ebbrt::MutIOBuf>& buf){
   // Don't overwrite the destination mac of ARP messages
   if (ethtype == ebbrt::kEthTypeArp) {
     auto &arp = dp.Get<ebbrt::ArpPacket>();
-    arp.tpa = client_internal_ipv4();
+    auto oper = ebbrt::ntohs(arp.oper);
+    if (oper == 0x1) { // ARP REQUEST lo-umi
+      arp.tpa = client_internal_ipv4();
+    } else if (oper == 0x2) { // ARP REPLY lo->umi
+      arp.tpa = client_internal_ipv4();
+      arp.tha = client_internal_macaddr();
+      eth.dst = client_internal_macaddr();
+    }
+    if(ebbrt::ntohs(arp.oper) == 0x2){ // ARP REPLY
+    }
   } else if (ethtype == ebbrt::kEthTypeIp) {
     eth.dst = client_internal_macaddr();
     auto &ip = dp.Get<ebbrt::Ipv4Header>();
@@ -188,6 +197,16 @@ void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
     // DROP PACKET AND RETURN
     return;
   }
+
+#ifndef NDEBUG /// DEBUG OUTPUT
+#if DEBUG_PRINT_IO
+  ebbrt::kprintf_force("(C#%lu) LO INCOMING PRE-MASK (lo<-umi) len=%d chain_len=%d\n",
+                       (size_t)ebbrt::Cpu::GetMine(),
+                    buf->ComputeChainDataLength(),
+                    buf->CountChainElements());
+#endif
+  umm::UmProxy::DebugPrint(buf->GetDataPointer());
+#endif
 
   // MASQUERADING
   //NAT::Outbound::Masquerade
