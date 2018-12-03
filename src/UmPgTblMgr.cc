@@ -11,8 +11,6 @@
 #include "UmManager.h"  // hack to get per core copied pages count.
 #include "UmPgTblMgr.h"
 #include "UmManager.h"
-// #include <Umm.h>
-#include <vector>
 
 #define printf kprintf
 
@@ -258,7 +256,50 @@ lin_addr UmPgTblMgmt::getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned ch
 
   ret.raw = walkPageTable(root, lvl, la, leafFn);
   return ret;
+}
 
+simple_pte *UmPgTblMgmt::addrToPTELamb(lin_addr la, simple_pte* root, unsigned char lvl) {
+  simple_pte *pte;
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return (uintptr_t)curPte;
+  };
+
+  pte = (simple_pte *) walkPageTable(root, lvl, la, leafFn);
+  return pte;
+}
+
+void UmPgTblMgmt::dumpAllPTEsWalkLamb(lin_addr la, simple_pte* root,
+                                            unsigned char lvl) {
+  // prints out all PTEs relevant for walking la.
+  printf("In %s\n", __func__);
+  auto recFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> void{
+    printf("Lvl is %d\n", lvl);
+    curPte->printCommon();
+  };
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return 0;
+  };
+
+  walkPageTable(root, lvl, la, recFn, leafFn);
+}
+
+void UmPgTblMgmt::setUserAllPTEsWalkLamb(lin_addr la, simple_pte* root,
+                                      unsigned char lvl) {
+  printf("In %s\n", __func__);
+  auto recFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> void{
+    // Set user bit.
+    curPte->raw = curPte->raw | 1 << 2;
+  };
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return 0;
+  };
+
+  walkPageTable(root, lvl, la, recFn, leafFn);
+  // HACK: Super overkill, but being overly conservative.
+  flushTranslationCaches();
 }
 
 uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
@@ -270,13 +311,22 @@ uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
   // Before doing anything, maybe nothing, maybe check if root is nullptr.
 
   simple_pte *curPTE = root + virt[lvl];
-  // f1();
 
   if(isLeaf(curPTE, lvl)){
     return L(curPTE, virt, lvl);
   }
   // printf("We exist, but we're not a leaf, recurse!\n");
   return walkPageTable(nextTableOrFrame(root, virt[lvl], lvl), lvl-1, virt, L);
+}
+
+uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
+                                     lin_addr virt, walkRecFn R, walkLeafFn L) {
+  simple_pte *curPTE = root + virt[lvl];
+  R(curPTE, virt, lvl);
+  if(isLeaf(curPTE, lvl)){
+    return L(curPTE, virt, lvl);
+  }
+  return walkPageTable(nextTableOrFrame(root, virt[lvl], lvl), lvl-1, virt, R, L);
 }
 
 // Printer helper.
@@ -858,7 +908,8 @@ void simple_pte::clearPTE(){
 void simple_pte::setPte(simple_pte *tab,
                         bool dirty /*= false*/,
                         bool acc   /*= false*/,
-                        bool rw    /*= true*/){
+                        bool rw    /*= true*/,
+                        bool us    /*= false*/){
 
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
@@ -868,6 +919,7 @@ void simple_pte::setPte(simple_pte *tab,
   simple_pte pte; pte.raw = 0;
   pte.decompCommon.SEL   = 1;
   pte.decompCommon.RW    = (rw)    ? 1 : 0;
+  pte.decompCommon.US    = (us)    ? 1 : 0;
   pte.decompCommon.A     = (acc)   ? 1 : 0;
   pte.decompCommon.DIRTY = (dirty) ? 1 : 0;
 

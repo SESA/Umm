@@ -7,6 +7,7 @@
 
 #include "stdint.h"
 #include <functional>
+#include <vector>
 
 #define SMALL_PG_SHIFT 12
 #define MED_PG_SHIFT 21
@@ -93,7 +94,7 @@ class simple_pte {
   lin_addr cr3ToAddr();
   void printCommon();
   // Set address field of PTE. Optionally dirty bit and accessed bit.
-  void setPte(simple_pte *tab, bool dirty = false, bool acc = false, bool rw = true);
+  void setPte(simple_pte *tab, bool dirty = false, bool acc = false, bool rw = true, bool us = false);
   void clearPTE();
 private:
   void printBits(uint64_t val, int len);
@@ -178,8 +179,7 @@ namespace UmPgTblMgmt {
 
 
   // Extractors
-  simple_pte *addrToPTE(lin_addr la, simple_pte *root = nullptr,
-                        unsigned char lvl = 4);
+  // simple_pte *addrToPTE(lin_addr la, unsigned char lvl = 4);
   // Chasers
   lin_addr getPhysAddrRec(lin_addr la, simple_pte *root = nullptr,
                           unsigned char lvl = 4);
@@ -215,6 +215,7 @@ namespace UmPgTblMgmt {
 
   // Used in walkPageTable.
   typedef std::function<uintptr_t(simple_pte *curPte, lin_addr virt, uint8_t lvl)> walkLeafFn;
+  typedef std::function<void(simple_pte *curPte, lin_addr virt, uint8_t lvl)> walkRecFn;
 
   static inline void invlpg(void* m) {
     asm volatile ( "invlpg (%0)" : : "b"(m) : "memory" );
@@ -225,6 +226,7 @@ namespace UmPgTblMgmt {
   void cacheInvalidateValidPagesLamb(simple_pte *root, uint8_t lvl);
 
   lin_addr getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned char lvl);
+  simple_pte *addrToPTELamb(lin_addr la, simple_pte* root, unsigned char lvl);
 
   void printTraversalLamb(simple_pte *root, uint8_t lvl);
 
@@ -256,7 +258,11 @@ namespace UmPgTblMgmt {
                                 afterRecFn AR, leafFn L,
                                 beforeRetFn BRET);
 
+  void setUserAllPTEsWalkLamb(lin_addr la, simple_pte* root, unsigned char lvl);
+  void dumpAllPTEsWalkLamb(lin_addr la, simple_pte* root, unsigned char lvl);
+
   uintptr_t walkPageTable(simple_pte *root, uint8_t lvl, lin_addr virt, walkLeafFn L);
+  uintptr_t walkPageTable(simple_pte *root, uint8_t lvl, lin_addr virt, walkRecFn R, walkLeafFn L);
 
   simple_pte *mapIntoPgTblLamb(simple_pte *root, lin_addr phys,
                                lin_addr virt, unsigned char rootLvl,
