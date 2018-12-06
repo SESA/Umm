@@ -8,23 +8,28 @@
 #include "UmInstance.h"
 #include "umm-internal.h"
 
+// TODO: this feels bad.
+#include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
+
 void umm::UmInstance::SetArguments(const uint64_t argc,
                                    const char *argv[]) {
   // NOTE: Should we be referencing this type?
   // Shallow copy of boot info.
-  bi = *(ukvm_boot_info *) argc;
-
+  bi = malloc(sizeof(ukvm_boot_info));
+  auto kvm_args = (ukvm_boot_info *) argc;
+  std::memcpy(bi, (const void *)kvm_args, sizeof(ukvm_boot_info));
   {
+    auto bi_v = (ukvm_boot_info*)bi;
     // Make buffer for a deep copy.
     // Need to add 1 for null.
-    char *tmp = (char *) malloc(strlen(bi.cmdline) + 1);
+    char *tmp = (char *) malloc(strlen(bi_v->cmdline) + 1);
     // Do the copy.
-    strcpy(tmp, bi.cmdline);
+    strcpy(tmp, bi_v->cmdline);
     // Swing ptr intentionally dropping old.
-    bi.cmdline = tmp;
+    bi_v->cmdline = tmp;
   }
 
-  sv_.ef.rdi = (uint64_t) &bi;
+  sv_.ef.rdi = (uint64_t) bi;
   if (argv)
     sv_.ef.rsi = (uint64_t)argv;
 }
@@ -77,7 +82,6 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
   // Copy data on that page. Remember vaddr is still old write protected page.
   // kprintf_force(MAGENTA "Copy dst %p, src %p!" RESET, bp_start_addr, vaddr);
   std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
-
 
   return bp_start_addr;
 }
