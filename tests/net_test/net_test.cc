@@ -122,7 +122,7 @@ void AppMain() {
         app_session->is_connected.Then([=](auto f) {
           ebbrt::kprintf_force("Alright, we are connected!\n");
         });
-        app_session->Pcb().Connect(umm::proxy->client_local_ipv4(), 8080);
+        app_session->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080);
       },
       /* force_async = */ true);
   umm::manager->runSV();
