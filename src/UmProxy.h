@@ -81,9 +81,9 @@ public:
     return ebbrt::network_manager->IpAddress();
   }
 
-  ebbrt::EthernetAddress host_external_macaddr(){
-    return ebbrt::network_manager->MacAddress();
-  }
+//  ebbrt::EthernetAddress host_external_macaddr(){
+//    //return ebbrt::network_manager->MacAddress();
+//  }
 
   explicit UmProxy(const LoopbackDriver &root) : root_(const_cast<LoopbackDriver&>(root)) {}
 
