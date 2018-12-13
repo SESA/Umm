@@ -37,15 +37,57 @@ void userFn() {
   b = 7;
   c = a ^ b;
 
-  __asm__ __volatile__("leaveq");
 
 #ifdef USE_SYSENTER_SYSEXIT
   __asm__ __volatile__("sysenter");
 #else
+  // call foo
+  int arr[3];
+  arr[0]=5;
+  __asm__ __volatile__("mov %0, %%edi" ::"r"(0x0));
+  __asm__ __volatile__("movq %0, %%rsi" ::"r"(&arr[0]));
+  __asm__ __volatile__("syscall");
+
+  arr[1]=6;
+  __asm__ __volatile__("mov %0, %%edi" ::"r"(0x1));
+  __asm__ __volatile__("movq %0, %%rsi" ::"r"(&arr[1]));
+  __asm__ __volatile__("syscall");
+
+  arr[2]=7;
+  __asm__ __volatile__("mov %0, %%edi" ::"r"(0x2));
+  __asm__ __volatile__("movq %0, %%rsi" ::"r"(&arr[2]));
   __asm__ __volatile__("syscall");
 #endif
 
+
   printf("I don't really run %d \n", c);
+}
+
+void call_foo(void *input) {
+  printf(YELLOW "Hi from foo, input is %d\n" RESET, *(int *)input);
+}
+
+void call_bar(void *input) {
+  printf(YELLOW "Hi from bar, input is %d\n" RESET, *(int *)input);
+}
+
+void call_exit(void *input) {
+  printf(RED "Hi from exit, input is %d\n" RESET, *(int *)input);
+  while(1);
+}
+
+void (*system_calls[3])(void *) = {call_foo, call_bar, call_exit};
+
+void my_call_handler(int arg, void *input) {
+  uint64_t rip;
+  asm volatile("mov %%rcx, %0;" : "=r"(rip) : :);
+
+  printf("In call_handler with arg #%d, input %p \n", arg, input);
+
+  system_calls[arg](input);
+
+  __asm__ __volatile__("mov %0, %%rcx" ::"r"(rip));
+  __asm__ __volatile__("sysretq");
 }
 
 void configureUserSegments32() {
@@ -145,7 +187,6 @@ void configureSupSegments64(uintptr_t fnAddr) {
 }
 
 void configureUserSegments64() {
-  {
     // This allows us to sysret into user.
     // Faking a CS val.
     uint32_t IA32_STAR_MSR, lo, hi;
@@ -165,23 +206,6 @@ void configureUserSegments64() {
 
     printf("setting CS: lo:%x hi:%x \n", lo, hi);
     cpuSetMSR(IA32_STAR_MSR, hi, lo);
-  }
-
-}
-
-void segmentHack64(){
-  // Read causing gp fault, try this write
-
-  uint32_t IA32_STAR_MSR, lo, hi;
-  IA32_STAR_MSR = 0xC0000084;
-
-  uint32_t fake_cs_ret, fake_cs_call;
-  fake_cs_ret = fake_cs_call = 4;
-  hi = (fake_cs_ret << 16) | fake_cs_call;
-  lo = 0;
-
-  // Set
-  cpuSetMSR(IA32_STAR_MSR, hi, lo);
 }
 
 // void configureSupSegments64(flowState supState) {
@@ -236,7 +260,7 @@ void getUserState(flowState *us) {
 
     // Copy over from existing code for userFn
     // Size determined by objdump.
-    memcpy((void *)page_addr, (void *)userFn, 0x31);
+    memcpy((void *)page_addr, (void *)userFn, 1<<10);
     printf("User state code is %p\n", us->code);
   }
 }
@@ -255,7 +279,7 @@ void doubleTransition() {
     uint64_t rsp;
     asm volatile("mov %%rsp, %0;" : "=r"(rsp) : :);
     supState.stack = (void *)rsp;
-    supState.code = &&mylabel;
+    supState.code = (void *)my_call_handler;
 
 #ifdef USE_SYSENTER_SYSEXIT
     configureSupSegments32(supState);
@@ -297,7 +321,7 @@ void doubleTransition() {
 #endif
   }
 
-mylabel:
+// mylabel:
   // Return back to supervisor mode here.
   // Aren't the registers going to be all jacked up?
 
@@ -334,6 +358,7 @@ void AppMain() {
 
   printf("Going to try to transition now\n");
 
+  // int db=1; while(db);
   doubleTransition();
 
   printf("Main going down\n");
