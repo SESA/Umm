@@ -33,50 +33,44 @@ int solo5_hypercall_netinfo(volatile void *arg);
 int solo5_hypercall_netread(volatile void *arg);
 int solo5_hypercall_netwrite(volatile void *arg);
 
-static int solo5_hypercall_halt(volatile void *arg) {
+static void solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
   (void)arg_;
   ebbrt::kprintf_force("\nHalting Solo5. Goodbye!\n");
   umm::manager->Halt();
-  return 0;
 }
 
-static int solo5_hypercall_walltime(volatile void *arg) {
+static void solo5_hypercall_walltime(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_walltime *)arg;
   auto tp = ebbrt::clock::Wall::Now();
   auto dur = tp.time_since_epoch();
   auto dur_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
   arg_->nsecs = dur_ns.count();
   ebbrt::kprintf("EbbRT walltime is %llu\n", arg_->nsecs);
-  return 0;
 }
 
-static int solo5_hypercall_puts(volatile void *arg) {
+static void solo5_hypercall_puts(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_puts *)arg;
   for (unsigned int i = 0; i < arg_->len; i++)
     ebbrt::kprintf("%c", arg_->data[i]);
-  return 0;
 }
 
-static int solo5_hypercall_blkinfo(volatile void *arg) {
+static void solo5_hypercall_blkinfo(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkinfo *)arg;
   (void)arg_;
   ebbrt::kprintf("Error: Unsupported hypercall blkinfo \n");
-  return 1;
 }
 
-static int solo5_hypercall_blkread(volatile void *arg) {
+static void solo5_hypercall_blkread(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkread *)arg;
   (void)arg_;
   ebbrt::kprintf("Error: Unsupported hypercall blkread \n");
-  return 1;
 }
 
-static int solo5_hypercall_blkwrite(volatile void *arg) {
+static void solo5_hypercall_blkwrite(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_blkwrite *)arg;
   (void)arg_;
   ebbrt::kprintf("Error: Unsupported hypercall blkwrite \n");
-  return 1;
 }
 
 // Set solo5 boot arguments
@@ -112,6 +106,32 @@ static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
   kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_HALT] =
       (uint64_t)solo5_hypercall_halt;
   return (uint64_t)kern_info;
+}
+
+static void (*sys_calls[11])(volatile void *) = {
+    NULL,
+    solo5_hypercall_walltime,
+    solo5_hypercall_puts,
+    solo5_hypercall_poll,
+    solo5_hypercall_blkinfo,
+    solo5_hypercall_blkwrite,
+    solo5_hypercall_blkread,
+    solo5_hypercall_netinfo,
+    solo5_hypercall_netwrite,
+    solo5_hypercall_netread,
+    solo5_hypercall_halt,
+};
+
+void call_handler(int n, void *arg) {
+  uint64_t rip;
+  asm volatile("mov %%rcx, %0;" : "=r"(rip) : :);
+
+  printf("In call_handler with arg #%d, input %p \n", n, arg);
+
+  sys_calls[n](arg);
+
+  __asm__ __volatile__("mov %0, %%rcx" ::"r"(rip));
+  __asm__ __volatile__("sysretq");
 }
 
 #endif // UMM_UM_SOLO5_H_

@@ -1067,9 +1067,7 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyCOWHelper(simple_pte *root,
     if (isLeaf(root + i, lvl)) {
       // Higher NYI
       kassert(lvl == 1);
-      // If it's a dirty page or if we're bootstrapping (making base envt);
-      if ((root + i)->decompCommon.DIRTY || umm::manager->bootstrapping) {
-      // if ((root + i)->decompCommon.DIRTY ) {
+      if ((root + i)->decompCommon.DIRTY ) {
         // TODO(tommyu) is there a better way?
         // Reconstruct page Lin Addr.
         lin_addr virt = reconstructLinAddrPgFromOffsets(idx);

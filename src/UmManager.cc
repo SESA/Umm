@@ -8,6 +8,7 @@
 #include "UmPgTblMgr.h"
 #include "UmProxy.h"
 #include "UmRegion.h"
+#include "UmSyscall.h"
 #include "umm-internal.h"
 
 #include <ebbrt/native/VMemAllocator.h>
@@ -154,7 +155,7 @@ OK:
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   // ebbrt::kprintf_force(CYAN "Snapshotting, core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
-  // pfc.dump_ctrs();
+  pfc.dump_ctrs();
   set_status(snapshot);
 
   UmSV* snap_sv = new UmSV();
@@ -362,7 +363,13 @@ void umm::UmManager::runSV() {
   kassert(status() == loaded);
   kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
+
+#ifdef USE_SYSCALL
+  umm::syscall::trigger_sysret();
+#else
   trigger_bp_exception();
+#endif
+
 }
 
 void umm::UmManager::Halt() {
@@ -387,7 +394,12 @@ void umm::UmManager::Halt() {
   DisableTimers();
   delete context_;
   context_ = nullptr;
+
+#ifdef USE_SYSCALL
+  umm::syscall::trigger_syscall();
+#else
   trigger_bp_exception();
+#endif
 }
 
 ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){

@@ -11,6 +11,7 @@
 #include <ebbrt/GlobalStaticIds.h>
 #include <ebbrt/MulticoreEbb.h>
 #include <ebbrt/Timer.h>
+#include "UmSyscall.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 
@@ -34,18 +35,24 @@ const uintptr_t kSlotEndVAddr = 0xFFFFC07FFFFFFFFF;
 const uint64_t kSlotPageLength = 0x7FFFFFF;
 const uint16_t kSlotPML4Offset = 0x180;
 
+// Use int 3 by default, this enables syscall mechanism.
+#define USE_SYSCALL
+
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
+  UmManager(){
+    // init syscall extensions and MSRs.
+    umm::syscall::enableSyscallSysret();
+  }
 
 #if PERF
   Counter ctr;
 #endif
 
   // TODO HACK XXX DELETEME:
-  bool bootstrapping = false;
   std::unique_ptr<UmInstance> umi_;
   simple_pte* getSlotPDPTRoot();
 
