@@ -333,6 +333,8 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
 
   set_status(loaded);
   umi_ = std::move(umi);
+  // Inform the proxy of the new umi
+  proxy->LoadUmi(umi_->Id());
 }
 
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
@@ -383,7 +385,7 @@ void umm::UmManager::Halt() {
   kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
   // Clear proxy data
-  proxy->UmClearData();
+  proxy->LoadUmi(0);
   DisableTimers();
   delete context_;
   context_ = nullptr;

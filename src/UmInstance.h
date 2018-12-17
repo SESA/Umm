@@ -70,7 +70,7 @@ public:
   UmSV sv_;
 
 private:
-  umi::id id_ = 0; //TODO
+  umi::id id_ = ebbrt::ebb_allocator->AllocateLocal(); 
 
 }; // umm::UmInstance
 }
