@@ -201,7 +201,6 @@ void umm::UmProxy::nat_connection_reset(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
   dp.Advance(sizeof(ebbrt::EthernetHeader));
   auto &ip = dp.Get<ebbrt::Ipv4Header>();
   auto &tcp = dp.Get<ebbrt::TcpHeader>();
-  uint32_t seqno = ebbrt::ntohl(tcp.seqno);
   uint32_t ackno = ebbrt::ntohl(tcp.ackno);
   uint16_t local_port = ebbrt::ntohs(tcp.dst_port);
   uint16_t remote_port = ebbrt::ntohs(tcp.src_port);
@@ -209,15 +208,15 @@ void umm::UmProxy::nat_connection_reset(std::unique_ptr<ebbrt::MutIOBuf> &buf) {
   ebbrt::Ipv4Address remote_ip = ip.src;
 
   // ** DEBUG PRINT **
-      kprintf(RED "TCP CONNECTION RESET:\n" );
-  ebbrt::kprintf_force("tcp: seq=0x%x ack=0x%x iport:%d rport:%d\n", seqno, ackno,
-                       local_port, remote_port);
-  auto spa = local_ip.toArray();
-  ebbrt::kprintf_force("  local_ip: %hhd.%hhd.%hhd.%hhd \n", spa[0], spa[1],
-                       spa[2], spa[3]);
-  spa = remote_ip.toArray();
-  ebbrt::kprintf_force("  remote_ip: %hhd.%hhd.%hhd.%hhd \n" RESET, spa[0],
-                       spa[1], spa[2], spa[3]);
+  //kprintf(RED "TCP CONNECTION RESET:\n");
+  //kprintf("tcp: seq=0x%x ack=0x%x iport:%d rport:%d\n", seqno, ackno,
+  //                     local_port, remote_port);
+  //auto spa = local_ip.toArray();
+  //kprintf("  local_ip: %hhd.%hhd.%hhd.%hhd \n", spa[0], spa[1],
+  //                     spa[2], spa[3]);
+  //spa = remote_ip.toArray();
+  //kprintf("  remote_ip: %hhd.%hhd.%hhd.%hhd \n" RESET, spa[0],
+  //                     spa[1], spa[2], spa[3]);
 
   /*
     void TcpReset(bool ack, uint32_t seqno, uint32_t ackno,

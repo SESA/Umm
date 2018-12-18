@@ -28,6 +28,8 @@ namespace umm {
 
 namespace {
 typedef boost::bimap<uint16_t, uint16_t> port_map_t; /* <internal, nat port>*/
+const uint16_t port_min = 256;
+const uint16_t port_max = 32000;
 }
 
 class ProxyRoot {
@@ -35,7 +37,7 @@ public:
   typedef std::pair<size_t, uint64_t> umi_location; // <core, umiID>
   explicit ProxyRoot(const LoopbackDriver &root)
       : lo(const_cast<LoopbackDriver &>(root)) {
-    port_set_ += boost::icl::interval<uint16_t>::type(256, 49151);
+    port_set_ += boost::icl::interval<uint16_t>::type(port_min, port_max);
   }
   umm::umi::exec_location GetLocationFromPort(uint16_t);
   /* Allocate and register a new port for this Um Instance */
