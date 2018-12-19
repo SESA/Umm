@@ -34,6 +34,56 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
     sv_.ef.rsi = (uint64_t)argv;
 }
 
+ebbrt::Future<umm::UmSV*> umm::UmInstance::SetCheckpoint(uintptr_t vaddr){
+  kassert(snap_addr == 0);
+  snap_addr = vaddr;
+  snap_p= new ebbrt::Promise<umm::UmSV*>();
+  return snap_p->GetFuture();
+}
+
+void umm::UmInstance::Fire() {
+  kassert(timer_set);
+  timer_set = false;
+  if(context_ == nullptr) // Nothing to restore to..? 
+    return;
+  auto now = ebbrt::clock::Wall::Now();
+  // If we've passed the time_blocked period then unblock the execution 
+  if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
+    time_wait = ebbrt::clock::Wall::time_point(); // clear the time
+  }
+  ebbrt::event_manager->ActivateContext(std::move(*context_));
+}
+
+void umm::UmInstance::Block(ebbrt::clock::Wall::time_point wake_time) {
+  kassert(!timer_set);
+  auto now = ebbrt::clock::Wall::Now();
+  if (now >= wake_time) {
+    // No need to block, the wake time has already passed
+    return; 
+  }
+  time_wait  = wake_time;
+  auto duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(wake_time - now);
+  ebbrt::timer->Start(*this, duration, /* repeat = */ false);
+  timer_set = true;
+  context_ = new ebbrt::EventManager::EventContext();
+  // This will block until the context is restored
+  ebbrt::event_manager->SaveContext(*context_);
+}
+
+void umm::UmInstance::DisableTimers() {
+  if (timer_set) {
+    ebbrt::timer->Stop(*this);
+  }
+  time_wait = ebbrt::clock::Wall::time_point(); // clear timer
+  timer_set = false;
+}
+
+umm::UmInstance::~UmInstance() {
+  DisableTimers();
+  kprintf_force(RED "Deleting UMI #%d\n" RESET,id_);
+}
+
 void umm::UmInstance::Print() {
   kprintf("Number of pages allocated: %d\n", page_count);
   sv_.Print();
@@ -99,14 +149,6 @@ void umm::UmInstance::logFault(x86_64::PgFaultErrorCode ec){
   } else {
     pfc.rdFaults++;
   }
-}
-
-
-void umm::UmInstance::PgFtCtrs::zero_ctrs(){
-  pgFaults = 0;
-  rdFaults = 0;
-  wrFaults = 0;
-  cowFaults = 0;
 }
 
 void umm::UmInstance::PgFtCtrs::dump_ctrs(){

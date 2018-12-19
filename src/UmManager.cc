@@ -49,10 +49,10 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   if (stat == loaded) {
 
     // Store the runSV() frame for when done SV execution.
-    caller_restore_frame_ = *ef;
+    active_umi_->caller_restore_frame_ = *ef;
 
     // Overwrite exception frame from sv, setup by loader / setArguments().
-    *ef = umi_->sv_.ef;
+    *ef = active_umi_->sv_.ef;
     set_status(running);
     return;
   }
@@ -60,7 +60,7 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   // If running, snapshot or blocked, this entry is treated as a halt
   // Switch back to the runSV() caller stack.
   if (stat == running || stat == blocked || stat == snapshot) {
-    *ef = caller_restore_frame_;
+    *ef = active_umi_->caller_restore_frame_;
     set_status(finished);
     return;
   }
@@ -117,10 +117,14 @@ OK:
   s_ = new_status;
 }
 
+void umm::UmManager::signal_yield(){
+  kassert(status() == running);
+	yeild_instance_ = true;
+}
+
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   // ebbrt::kprintf_force(CYAN "Snapshotting, core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
-  // pfc.dump_ctrs();
   set_status(snapshot);
 
   UmSV* snap_sv = new UmSV();
@@ -128,29 +132,14 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
 
   // Populate region list.
   // HACK: use a assignment operator.
-  for (const auto &reg : umi_->sv_.region_list_) {
+  for (const auto &reg : active_umi_->sv_.region_list_) {
     Region r = reg;
     snap_sv->AddRegion(r);
   }
 
   // Copy all dirty pages into new page table.
   snap_sv->pth.copyInPages(getSlotPDPTRoot());
-
-
-  // Save the snapshot and resume execution of the instance
-  // This will synchronously execute a future->Then( lambda ) 
-  // ebbrt::kprintf_force(CYAN "Have snapshot, it has pages\n" RESET, (size_t) ebbrt::Cpu::GetMine());
-
-  // {
-  //   std::vector<uint64_t> counts(5); // Vec of size 5, zero elements.
-  //   UmPgTblMgmt::countValidWritePagesLamb(counts, snap_sv->pth.Root(), 3);
-  //   for (int i = 4; i > 0; i--) {
-  //     kprintf_force(YELLOW "counts[%s] = %lu\n" RESET, level_names[i],
-  //                   counts[i]);
-  //   }
-  // }
-
-  umi_snapshot_->SetValue(snap_sv);
+  active_umi_->snap_p->SetValue(snap_sv);
   set_status(running);
 }
 
@@ -168,7 +157,7 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
-  umi_->logFault(ec);
+  active_umi_->logFault(ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -179,9 +168,9 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   uintptr_t physical_start_addr = 0;
   if(ec.P == 1){
     // kprintf_force("Copy on write a page!\n");
-    physical_start_addr = umi_->GetBackingPageCOW(virtual_page_addr);
+    physical_start_addr = active_umi_->GetBackingPageCOW(virtual_page_addr);
   } else{
-    physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
+    physical_start_addr = active_umi_->GetBackingPage(virtual_page_addr);
   }
 
   lin_addr phys;
@@ -239,7 +228,21 @@ void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
 }
 
-void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
+umm::umi::id umm::UmManager::Swap(std::unique_ptr<UmInstance> umi) {
+  if (status() != empty) {
+    // Only swap out a block instance
+    kassert(status() == blocked);
+    auto old_umi = Unload();
+    auto old_umi_id = old_umi->Id();
+    inactive_umi_map_.emplace(old_umi_id, std::move(old_umi));
+    inactive_umi_queue_.push(old_umi_id);
+    // Now the core is empty
+    kassert(status() == empty);
+  }
+  return Load(std::move(umi));
+}
+
+umm::umi::id umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
   // Better not have a loaded root.
   simple_pte *pdptRoot = getSlotPDPTRoot();
   kassert(pdptRoot == nullptr);
@@ -253,19 +256,22 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
     // kprintf("Slot root is %p\n", pdptRoot);
     kassert(pdptRoot != nullptr);
   }
-
   // Otherwise leave it 0 to be populated during 1st page fault.
 
+	// Set snapshot for this instance
+  if (valid_address(umi->snap_addr)) {
+    set_snapshot(umi->snap_addr);
+  }
+  // Inform the proxy of the new instance
+	auto umi_id = umi->Id();
+  proxy->LoadUmi(umi_id);
+  active_umi_ = std::move(umi);
   set_status(loaded);
-  umi_ = std::move(umi);
-  // Inform the proxy of the new umi
-  proxy->LoadUmi(umi_->Id());
+	return umi_id;
 }
 
+/** Internal function, unloads the Slot and clears the caches */
 std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
-  // ebbrt::kprintf_force(MAGENTA "Unloadin core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
-  // pfc.dump_ctrs();
-
   // Clear slot PTE.
   simple_pte *slotPML4Ent = getSlotPML4PTE();
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
@@ -275,23 +281,25 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   // Modified page table, invalidate caches. This is confirmed to matter in virtualization.
   UmPgTblMgmt::flushTranslationCaches();
 
+	yeild_instance_ = false;
   set_status(empty);
 
   kassert(!UmPgTblMgmt::exists(slotPML4Ent));
 
-  return std::move(umi_);
+  return std::move(active_umi_);
 }
 
-void umm::UmManager::runSV() {
+std::unique_ptr<umm::UmInstance> umm::UmManager::Run(std::unique_ptr<umm::UmInstance> umi) {
+	auto umi_id = Load(std::move(umi));
   kassert(status() == loaded);
-  kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
-                (size_t)ebbrt::Cpu::GetMine());
+  kprintf(GREEN "Umm... Deploying UMI %d on core #%d\n" RESET,
+                umi_id, (size_t)ebbrt::Cpu::GetMine());
   trigger_bp_exception();
+	// Return here after Halt() is called
+	return Unload(); // Assume the umi remains loaded
 }
 
 void umm::UmManager::Halt() {
-  kprintf(GREEN "Calling halt\n" RESET);
-  
   if(ebbrt::event_manager->QueueLength()){
     kprintf_force(YELLOW "Attempting to clear (%d) pending events before halting...\n" RESET, ebbrt::event_manager->QueueLength());
     ebbrt::event_manager->SpawnLocal(
@@ -303,19 +311,16 @@ void umm::UmManager::Halt() {
   }
 
   kassert(status() != empty);
-  kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
-                (size_t)ebbrt::Cpu::GetMine(), status_.time());
+  kprintf(GREEN "Umm... Returned from the instance on core #%d\n" RESET,
+                (size_t)ebbrt::Cpu::GetMine());
   // Clear proxy data
   proxy->LoadUmi(0);
-  DisableTimers();
-  delete context_;
-  context_ = nullptr;
+	active_umi_->DisableTimers();
   trigger_bp_exception();
 }
 
-ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
-  kassert(valid_address(vaddr));
-
+// XXX: How do we clear this ?
+void umm::UmManager::set_snapshot(uintptr_t vaddr){
   x86_64::DR7 dr7;
   x86_64::DR0 dr0;
   dr7.get();
@@ -335,80 +340,16 @@ ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
   // behavior.
   dr7.LEN0 = 0;
   dr7.set();
-
-  // TODO: leak
-  umi_snapshot_ = new ebbrt::Promise<umm::UmSV*>();
-  return umi_snapshot_->GetFuture();
-}
-
-void umm::UmManager::Fire(){
-  kassert(timer_set);
-  timer_set = false;
-
-  // If the instance is not blocked this timeout is stale, ignore it
-  if(status() != blocked)
-    return;
-
-  if(context_ == nullptr)
-    return;
-
-  // We take a single clock reading which we use to simplify some corner cases
-  // with respect to enabling the timer. This way there is a single time point
-  // when this event occurred and all clock computations can be relative to it.
-  auto now = ebbrt::clock::Wall::Now();
-
-  // If we reached the time_blocked period then unblock the execution 
-  if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
-    time_wait = ebbrt::clock::Wall::time_point(); // clear the time
-
-    // Unblock instance
-    status_.set(running);
-    // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
-    ebbrt::event_manager->ActivateContext(std::move(*context_));
-  }
-  // kabort("UmManager timeout error: blocking indefinitley\n");
 }
 
 void umm::UmManager::Block(size_t ns){
-  // Maybe just clobber old timer?
-  kassert(!timer_set);
-  if(!ns){
+  if (!ns) { // If no timeout amount
     kprintf(RED "0" RESET);
+    // By returning immediately it effectively acts as a Read poll
+    // but without giving up the core to process new IO (i.e., worthless)
     return;
   }
-
-  auto now = ebbrt::clock::Wall::Now();
-  time_wait = now + std::chrono::nanoseconds(ns);
-  SetTimer(now);
-  status_.set(blocked);
-  context_ = new ebbrt::EventManager::EventContext();
-  ebbrt::event_manager->SaveContext(*context_);
-  // kprintf(RED "Context restored...\n");
-}
-
-void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
-  if (timer_set){
-    // kprintf(RED "T" RESET);
-    return;
-  }
-
-  if (now >= time_wait) {
-    // kprintf(YELLOW "T" RESET);
-    return;
-  }
-
-  // kprintf(GREEN "T" RESET);
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(time_wait - now);
-  ebbrt::timer->Start(*this, duration, /* repeat = */ false);
-  timer_set = true;
-}
-
-void umm::UmManager::DisableTimers(){ 
-  if (timer_set) {
-    ebbrt::timer->Stop(*this);
-  }
-  // kprintf(RED "Disable timers....\n" RESET);
-  timer_set = false;
-  time_wait = ebbrt::clock::Wall::time_point(); // clear timer
+  auto wake_time = ebbrt::clock::Wall::Now();
+	wake_time += std::chrono::nanoseconds(ns);
+	active_umi_->Block(wake_time);
 }

@@ -30,22 +30,17 @@ const uint16_t kSlotPML4Offset = 0x180;
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
-class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
+class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
 
 
   inline bool valid_address(uintptr_t vaddr) {
-    return ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
+    return vaddr && ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
   }
 
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
   enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
-
-  /** Timer event handler */
-  void Fire() override;
-  void SetTimer(ebbrt::clock::Wall::time_point now);
-  void DisableTimers();
 
   /** Block UMI for nanoseconds */
   void Block(size_t ns);
@@ -53,27 +48,19 @@ public:
   /** Class-wide static initialization */
   static void Init(); 
 
-  /** Load an Instance onto the core */
-  void Load(std::unique_ptr<UmInstance>);
-
   /** Start execution of loaded instance */
-  void runSV(); // TODO(jmcadden): Rename as Enter?
+  std::unique_ptr<UmInstance> Run(std::unique_ptr<UmInstance>);
 
   /** Stop the execution of a loaded instance */
   void Halt();
-
-  /** Extract an SV at the given symbol (@vaddr) */
-  ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
-
-  /** Remove instance from core */
-  std::unique_ptr<UmInstance> Unload();
 
   /* Utility methods */ 
   void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
   void process_gateway(ExceptionFrame *ef);
   void process_checkpoint(ExceptionFrame *ef);
-  Status status() { return status_.get(); } ; 
-  void set_status( Status s ) { return status_.set(s);}
+  Status status() { return status_.get(); } ;
+  /* Signal the manager to yeild the instance on next Block */
+  void signal_yield();
 
 
 private:
@@ -84,6 +71,7 @@ private:
   public:
     void HandleFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr) override;
   };
+  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
 
   /**  //TODO: Rename SlotStatus 
     * Status tracks the status and runtime of slot exection
@@ -99,24 +87,27 @@ private:
     uint64_t runtime_ = 0;
   }; // UmmStatus
 
-  /* Internals */
-  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
-  /* Session specific values */
-  UmmStatus status_; // TODO: SlotStatus
-  // TODO: Move some of these into the Instance ??? 
-
-  bool timer_set = false;
-  ebbrt::clock::Wall::time_point time_wait; // block until this time
-  ebbrt::EventManager::EventContext *context_; // ebbrt event context
-
-  ExceptionFrame caller_restore_frame_; 
-  std::unique_ptr<UmInstance> umi_;
-  // TODO: Reusables or multi-promises 
-  ebbrt::Promise<UmSV*> *umi_snapshot_;
-
+  /** Internal Methods */
   simple_pte *getSlotPML4PTE();
   simple_pte* getSlotPDPTRoot();
   void setSlotPDPTRoot(simple_pte* newRoot);
+  void set_status( Status s ) { return status_.set(s);}
+  void set_snapshot(uintptr_t vaddr);
+
+  /** Load/Unload Instance onto the core */
+  umi::id Load(std::unique_ptr<UmInstance>);
+  std::unique_ptr<UmInstance> Unload();
+  /** Swap out block instance */
+  umi::id Swap(std::unique_ptr<UmInstance>);
+  bool yeild_instance_ = false;
+
+  /** Active UMI references */
+  std::unique_ptr<UmInstance> active_umi_;
+  std::unordered_map<umi::id,std::unique_ptr<UmInstance>> inactive_umi_map_;
+  std::queue<umi::id> inactive_umi_queue_;
+
+  /* Internal state */
+  UmmStatus status_; // TODO: SlotStatus
 };
 
 constexpr auto manager = 

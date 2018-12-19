@@ -7,6 +7,8 @@ build: target.binelf $(UMM_INSTALL_DIR)/libumm.a
 
 -include ../../Makefile.targets
 
+TARGET=solo5-hello
+
 $(UMM_INSTALL_DIR)/libumm.a:
 	$(MAKE) -C ../../
 

@@ -5,6 +5,8 @@
 #ifndef UMM_UM_INSTANCE_H_
 #define UMM_UM_INSTANCE_H_
 
+#include <ebbrt/Timer.h>
+
 #include "umm-common.h"
 #include "util/x86_64.h"
 
@@ -35,18 +37,17 @@ typedef std::pair<umi::id, umi::core> exec_location; // e.g., (ID, core)
  * state of the process.
  *
  */
-class UmInstance {
+class UmInstance : public ebbrt::Timer::Hook  {
 public:
   /** Page Fault counters */
   struct PgFtCtrs {
-    void zero_ctrs();
     void dump_ctrs();
     uint64_t pgFaults = 0;
     uint64_t rdFaults = 0;
     uint64_t wrFaults = 0;
     uint64_t cowFaults = 0;
   };
-  // IP/MAC are provided here (and not in UmProxy) to allow applications access
+  // IP/MAC are provided here (and not in UmProxy) to allow apps access to them
   static ebbrt::Ipv4Address CoreLocalIp() {
     size_t core = ebbrt::Cpu::GetMine();
     return {{169, 254, 254, (uint8_t)core}};
@@ -61,6 +62,7 @@ public:
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
+  ~UmInstance();
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
   uintptr_t GetBackingPageCOW(uintptr_t vaddr);
@@ -70,8 +72,16 @@ public:
   // TODO(jmcadden): Move this interface into the UmSV
   void SetArguments(const uint64_t argc, const char *argv[] = nullptr);
 
+  /** Extract an SV at the given symbol (@vaddr) */
+  ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
+
   /* Dump state of the instance*/
   void Print();
+
+  /** Timer event handler */
+  void Fire() override;
+  void Block(ebbrt::clock::Wall::time_point timeout);
+  void DisableTimers();
 
   // TODO: Add runtime duration into the instance
   size_t page_count = 0; // TODO: replace with region-specific counter
@@ -81,10 +91,16 @@ public:
   void* bi; // FIXME(jmcadden): lil memory leak
   UmSV sv_;
   PgFtCtrs pfc; // Page fault counters
+  ExceptionFrame caller_restore_frame_; 
+  /** Snapshot */
+  uintptr_t snap_addr = 0; // TODO: Multiple snap locations
+  ebbrt::Promise<UmSV *> *snap_p;
 
 private:
-  umi::id id_ = ebbrt::ebb_allocator->AllocateLocal(); 
-
+  bool timer_set = false;
+  ebbrt::clock::Wall::time_point time_wait; // block until this time
+  ebbrt::EventManager::EventContext *context_; // blocking context
+  umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
 }; // umm::UmInstance
 }
 
