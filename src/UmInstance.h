@@ -6,6 +6,7 @@
 #define UMM_UM_INSTANCE_H_
 
 #include "umm-common.h"
+#include "util/x86_64.h"
 
 #include "UmSV.h"
 
@@ -36,6 +37,16 @@ typedef std::pair<umi::id, umi::core> exec_location; // e.g., (ID, core)
  */
 class UmInstance {
 public:
+  /** Page Fault counters */
+  struct PgFtCtrs {
+    void zero_ctrs();
+    void dump_ctrs();
+    uint64_t pgFaults = 0;
+    uint64_t rdFaults = 0;
+    uint64_t wrFaults = 0;
+    uint64_t cowFaults = 0;
+  };
+  // IP/MAC are provided here (and not in UmProxy) to allow applications access
   static ebbrt::Ipv4Address CoreLocalIp() {
     size_t core = ebbrt::Cpu::GetMine();
     return {{169, 254, 254, (uint8_t)core}};
@@ -50,10 +61,11 @@ public:
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
-
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
   uintptr_t GetBackingPageCOW(uintptr_t vaddr);
+  /** Log PageFault to internal counter */
+  void logFault(x86_64::PgFaultErrorCode ec);
 
   // TODO(jmcadden): Move this interface into the UmSV
   void SetArguments(const uint64_t argc, const char *argv[] = nullptr);
@@ -68,6 +80,7 @@ public:
   // generic boot info structure
   void* bi; // FIXME(jmcadden): lil memory leak
   UmSV sv_;
+  PgFtCtrs pfc; // Page fault counters
 
 private:
   umi::id id_ = ebbrt::ebb_allocator->AllocateLocal(); 

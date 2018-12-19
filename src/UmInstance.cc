@@ -85,3 +85,33 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
 
   return bp_start_addr;
 }
+
+void umm::UmInstance::logFault(x86_64::PgFaultErrorCode ec){
+  pfc.pgFaults++;
+  // Write or Read?
+  if(ec.WR){
+    if(ec.P){
+      // If present, COW
+      pfc.cowFaults++;
+    }else{
+      pfc.wrFaults++;
+    }
+  } else {
+    pfc.rdFaults++;
+  }
+}
+
+
+void umm::UmInstance::PgFtCtrs::zero_ctrs(){
+  pgFaults = 0;
+  rdFaults = 0;
+  wrFaults = 0;
+  cowFaults = 0;
+}
+
+void umm::UmInstance::PgFtCtrs::dump_ctrs(){
+  kprintf_force("total: %lu\n", pgFaults);
+  kprintf_force("rd:    %lu\n", rdFaults);
+  kprintf_force("wr:    %lu\n", wrFaults);
+  kprintf_force("cow:   %lu\n", cowFaults);
+}

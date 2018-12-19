@@ -38,40 +38,6 @@ void umm::UmManager::Init() {
                                     std::move(hdlr));
 }
 
-int myround = 0;
-ebbrt::idt::ExceptionFrame oldef;
-
-void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
-  myround++;
-  // if first round, store old ef
-  if(myround == 1)
-    oldef = *ef;
-  // else if(myround == 2)
-  //   *ef = myef;
-  // else
-  // kabort();
-
-  else if (myround == 2) {
-
-    uint64_t *oldEfPtr = (uint64_t *)&oldef;
-    uint64_t *curEfPtr = (uint64_t *)ef;
-    kprintf("old %p \t\t, current %p\n", oldEfPtr, curEfPtr);
-    for (unsigned int i = 0; i < sizeof(ebbrt::idt::ExceptionFrame) / 8; i++) {
-      uint64_t old_reg = oldEfPtr[i];
-      uint64_t current_reg = curEfPtr[i];
-
-      if (old_reg == current_reg)
-        kprintf(GREEN);
-      else
-        kprintf(RED);
-
-      kprintf("[%d] %p\t%p\n", i, old_reg, current_reg);
-      kprintf(RESET);
-    }
-  }
-  else
-    kabort();
-}
 
 void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   // This is the enter / exit point for the function execution.
@@ -193,49 +159,16 @@ void umm::UmManager::PageFaultHandler::HandleFault(ExceptionFrame *ef,
   umm::manager->process_pagefault(ef, addr);
 }
 
-void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
-
-  // Green if present, else red.
-  // if(ec.P){
-  //   kprintf_force(GREEN);
-  // }else{
-  //   kprintf_force(RED);
-  // }
-
-  // Write or Read?
-  if(ec.WR){
-    if(ec.P){
-      // Present, COW
-      // kprintf_force(CYAN "W");
-      pfc.cowFaults++;
-    }else{
-      pfc.wrFaults++;
-      // kprintf_force(RED "W");
-    }
-  } else {
-    pfc.rdFaults++;
-    // kprintf_force(YELLOW "R");
-
-  }
-
-  // if(ec.ID){
-  //   kprintf_force(GREEN "I");
-  // }
-
-  // kprintf_force(RESET);
-}
-
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
-  pfc.pgFaults++;
   if(status() == snapshot)
-    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
+    kprintf_force(RED "Umm... Snapshot Pagefault!?\n" RESET);
 
   kassert(status() != empty);
   kassert(valid_address(vaddr));
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
-  logFaults(ec);
+  umi_->logFault(ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
@@ -282,12 +215,6 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(ec.P){
     umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
-
-
-  // if(vaddr == 0xffffc000000014a0 ){
-  //   umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
-  // }
-  // kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
@@ -303,7 +230,6 @@ umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
 }
 
 umm::simple_pte* umm::UmManager::getSlotPML4PTE(){
-  // Root of slot.
   simple_pte *slotPML4 = UmPgTblMgmt::getPML4Root() + kSlotPML4Offset;
   return slotPML4;
 }
@@ -314,7 +240,6 @@ void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
-  pfc.zero_ctrs();
   // Better not have a loaded root.
   simple_pte *pdptRoot = getSlotPDPTRoot();
   kassert(pdptRoot == nullptr);
@@ -341,21 +266,18 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Unload() {
   // ebbrt::kprintf_force(MAGENTA "Unloadin core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
   // pfc.dump_ctrs();
 
-  simple_pte *slotPML4Ent = umm::manager->getSlotPML4PTE();
-  kassert(UmPgTblMgmt::exists(slotPML4Ent));
-
   // Clear slot PTE.
-
-  // TODO, make sure page table is g2g or reaped.
+  simple_pte *slotPML4Ent = getSlotPML4PTE();
+  kassert(UmPgTblMgmt::exists(slotPML4Ent));
   slotPML4Ent->clearPTE();
+  // TODO, make sure page table is g2g or reaped.
 
   // Modified page table, invalidate caches. This is confirmed to matter in virtualization.
-  // UmPgTblMgmt::invlpg((void *) UmPgTblMgmt::getPML4Root()); // Think this is insufficient.
   UmPgTblMgmt::flushTranslationCaches();
 
   set_status(empty);
 
-  kassert( ! UmPgTblMgmt::exists(slotPML4Ent));
+  kassert(!UmPgTblMgmt::exists(slotPML4Ent));
 
   return std::move(umi_);
 }
@@ -381,7 +303,6 @@ void umm::UmManager::Halt() {
   }
 
   kassert(status() != empty);
-  // TODO:This might be a little harsh in general, but useful for debugging.
   kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
   // Clear proxy data
@@ -421,7 +342,6 @@ ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
 }
 
 void umm::UmManager::Fire(){
-  // kprintf(RED "(F)" RESET);
   kassert(timer_set);
   timer_set = false;
 
@@ -443,12 +363,9 @@ void umm::UmManager::Fire(){
 
     // Unblock instance
     status_.set(running);
-    // kprintf("Activating context, block ctr:%d\n", block_ctr_);
     // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
     ebbrt::event_manager->ActivateContext(std::move(*context_));
-    // kprintf("Post activate, block ctr:%d\n", block_ctr_);
   }
-  // kprintf(RED "(FR)" RESET);
   // kabort("UmManager timeout error: blocking indefinitley\n");
 }
 
@@ -465,12 +382,8 @@ void umm::UmManager::Block(size_t ns){
   SetTimer(now);
   status_.set(blocked);
   context_ = new ebbrt::EventManager::EventContext();
-  // int current_bc = block_ctr_;
-  block_ctr_++;
-  // kprintf(RED "Context saved: %d\n", current_bc);
   ebbrt::event_manager->SaveContext(*context_);
   // kprintf(RED "Context restored...\n");
-  // kprintf(RED "Context restored: %d\n", current_bc);
 }
 
 void umm::UmManager::SetTimer(ebbrt::clock::Wall::time_point now){
@@ -498,17 +411,4 @@ void umm::UmManager::DisableTimers(){
   // kprintf(RED "Disable timers....\n" RESET);
   timer_set = false;
   time_wait = ebbrt::clock::Wall::time_point(); // clear timer
-}
-
-void umm::UmManager::PgFtCtrs::zero_ctrs(){
-  pgFaults = 0;
-  rdFaults = 0;
-  wrFaults = 0;
-  cowFaults = 0;
-}
-void umm::UmManager::PgFtCtrs::dump_ctrs(){
-  kprintf_force("total: %lu\n", pgFaults);
-  kprintf_force("rd:    %lu\n", rdFaults);
-  kprintf_force("wr:    %lu\n", wrFaults);
-  kprintf_force("cow:   %lu\n", cowFaults);
 }

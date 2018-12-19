@@ -18,13 +18,6 @@
 #include "UmPgTblMgr.h"
 #include "UmSV.h"
 #include "umm-common.h"
-#include "util/x86_64.h"
-
-#define PERF 1
-#if PERF
-#include <ebbrt/native/Perf.h>
-#include "Counter.h"
-#endif
 
 namespace umm {
 
@@ -40,20 +33,10 @@ const uint16_t kSlotPML4Offset = 0x180;
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
 
-#if PERF
-  Counter ctr;
-#endif
 
-  // TODO HACK XXX DELETEME:
-  bool bootstrapping = false;
-  std::unique_ptr<UmInstance> umi_;
-  simple_pte* getSlotPDPTRoot();
-
-  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
   inline bool valid_address(uintptr_t vaddr) {
     return ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
   }
-
 
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
   /** Execution slot status */
@@ -61,24 +44,25 @@ public:
 
   /** Timer event handler */
   void Fire() override;
-
   void SetTimer(ebbrt::clock::Wall::time_point now);
   void DisableTimers();
+
+  /** Block UMI for nanoseconds */
   void Block(size_t ns);
 
-  /** Class-wide static initialization logic */
+  /** Class-wide static initialization */
   static void Init(); 
 
-  /** Load Instances into the core */
+  /** Load an Instance onto the core */
   void Load(std::unique_ptr<UmInstance>);
 
   /** Start execution of loaded instance */
   void runSV(); // TODO(jmcadden): Rename as Enter?
 
-  // Exit point called by solo5 hypercall.
+  /** Stop the execution of a loaded instance */
   void Halt();
 
-  /** Extract an SV at a given symbol */
+  /** Extract an SV at the given symbol (@vaddr) */
   ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
 
   /** Remove instance from core */
@@ -91,17 +75,6 @@ public:
   Status status() { return status_.get(); } ; 
   void set_status( Status s ) { return status_.set(s);}
 
-  class PgFtCtrs {
-  public:
-    void zero_ctrs();
-    void dump_ctrs();
-    uint64_t pgFaults;
-    uint64_t rdFaults;
-    uint64_t wrFaults;
-    uint64_t cowFaults;
-  };
-  void logFaults(x86_64::PgFaultErrorCode ec);
-  PgFtCtrs pfc;
 
 private:
   /** 
@@ -127,7 +100,7 @@ private:
   }; // UmmStatus
 
   /* Internals */
-  // Put trigger_bp_exception back here!
+  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
   /* Session specific values */
   UmmStatus status_; // TODO: SlotStatus
   // TODO: Move some of these into the Instance ??? 
@@ -136,18 +109,13 @@ private:
   ebbrt::clock::Wall::time_point time_wait; // block until this time
   ebbrt::EventManager::EventContext *context_; // ebbrt event context
 
-  int block_ctr_ = 0;
-
   ExceptionFrame caller_restore_frame_; 
-  // ExceptionFrame snap_restore_frame_; 
-  // Put umi_ back here!
+  std::unique_ptr<UmInstance> umi_;
   // TODO: Reusables or multi-promises 
-  // ebbrt::Promise<UmSV> umi_snapshot_;
   ebbrt::Promise<UmSV*> *umi_snapshot_;
 
-private:
   simple_pte *getSlotPML4PTE();
-  // Put getslotpdptroot here
+  simple_pte* getSlotPDPTRoot();
   void setSlotPDPTRoot(simple_pte* newRoot);
 };
 
