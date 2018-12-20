@@ -6,6 +6,7 @@
 #include <ebbrt/native/PageAllocator.h>
 
 #include "UmInstance.h"
+#include "UmManager.h"
 #include "umm-internal.h"
 
 // TODO: this feels bad.
@@ -41,47 +42,47 @@ ebbrt::Future<umm::UmSV*> umm::UmInstance::SetCheckpoint(uintptr_t vaddr){
   return snap_p->GetFuture();
 }
 
-void umm::UmInstance::Fire() {
-  kassert(timer_set);
-  timer_set = false;
-  if(context_ == nullptr) // Nothing to restore to..? 
-    return;
-  auto now = ebbrt::clock::Wall::Now();
-  // If we've passed the time_blocked period then unblock the execution 
-  if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
-    time_wait = ebbrt::clock::Wall::time_point(); // clear the time
-  }
+void umm::UmInstance::WritePacket(std::unique_ptr<ebbrt::IOBuf> buf){
+  umi_recv_queue_.emplace(std::move(buf));
+}
+
+std::unique_ptr<ebbrt::IOBuf> umm::UmInstance::ReadPacket(){
+  if(!HasData())
+    return nullptr;
+  auto buf = std::move(umi_recv_queue_.front());
+  umi_recv_queue_.pop();
+  return std::move(buf);
+}
+
+void umm::UmInstance::Activate(){
+  kassert(!active_);
+  kassert(context_);
+  // ebbrt::event_manager->ActivateContextSync(std::move(*context_));
+  active_ = true;
   ebbrt::event_manager->ActivateContext(std::move(*context_));
 }
 
-void umm::UmInstance::Block(ebbrt::clock::Wall::time_point wake_time) {
-  kassert(!timer_set);
-  auto now = ebbrt::clock::Wall::Now();
-  if (now >= wake_time) {
-    // No need to block, the wake time has already passed
-    return; 
-  }
-  time_wait  = wake_time;
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(wake_time - now);
-  ebbrt::timer->Start(*this, duration, /* repeat = */ false);
-  timer_set = true;
+void umm::UmInstance::Deactivate() {
+  kassert(active_);
+  active_ = false;
   context_ = new ebbrt::EventManager::EventContext();
-  // This will block until the context is restored
+  kprintf(YELLOW "%u" RESET, id_);
   ebbrt::event_manager->SaveContext(*context_);
+  kprintf(GREEN "%u" RESET, id_);
 }
 
-void umm::UmInstance::DisableTimers() {
-  if (timer_set) {
-    ebbrt::timer->Stop(*this);
+void umm::UmInstance::EnableYield() {
+  if(!yield_flag_){
+    kprintf(CYAN "UMI #%d yield enabled\n" RESET, id_);
+    yield_flag_ = true;
   }
-  time_wait = ebbrt::clock::Wall::time_point(); // clear timer
-  timer_set = false;
 }
 
-umm::UmInstance::~UmInstance() {
-  DisableTimers();
-  kprintf_force(RED "Deleting UMI #%d\n" RESET,id_);
+void umm::UmInstance::DisableYield() {
+  if(yield_flag_){
+    kprintf(CYAN "UMI #%d yield disabled\n" RESET, id_);
+    yield_flag_ = false;
+  }
 }
 
 void umm::UmInstance::Print() {

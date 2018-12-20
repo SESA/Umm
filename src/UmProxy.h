@@ -6,6 +6,7 @@
 #define UMM_UM_PROXY_H_
 
 #include <queue>
+#include <cstdint>
 
 #include <ebbrt/Cpu.h>
 #include <ebbrt/EbbId.h>
@@ -26,8 +27,18 @@
 
 namespace umm {
 
+typedef uint16_t external_port_t;
+typedef std::tuple<umi::id, umi::core, uint16_t> internal_port_t;
+
 namespace {
-typedef boost::bimap<uint16_t, uint16_t> port_map_t; /* <internal, nat port>*/
+typedef boost::icl::interval_set<external_port_t> port_set_t;
+typedef boost::bimap<external_port_t, internal_port_t> port_map_t;
+typedef port_map_t::left_map::const_iterator port_map_left_iterator_t;
+typedef port_map_t::right_map::const_iterator port_map_right_iterator_t;
+typedef std::unordered_multimap<umi::id, external_port_t> port_owner_map_t;
+typedef port_owner_map_t::iterator port_owner_map_iterator_t;
+
+const internal_port_t null_port_mapping_(0, 0, 0);
 const uint16_t port_min = 256;
 const uint16_t port_max = 32000;
 }
@@ -39,23 +50,28 @@ public:
       : lo(const_cast<LoopbackDriver &>(root)) {
     port_set_ += boost::icl::interval<uint16_t>::type(port_min, port_max);
   }
-  umm::umi::exec_location GetLocationFromPort(uint16_t);
+
   /* Allocate and register a new port for this Um Instance */
-  uint16_t RegisterPortMask(umi::id);
+  uint16_t SetupExternalPortMapping(umi::id, uint16_t);
+  void SetupInternalPortMapping(umi::id, uint16_t);
+  internal_port_t ExternalPortLookup(external_port_t);
+  umi::id InternalPortLookup(uint16_t);
+	/* Free the associated ports of umi */
+	void FreePorts(umi::id);
 
 private:
   uint16_t allocate_port();
   void free_port(uint16_t);
-  typedef uint16_t iport, nport; /* internal src port, natted src ports */
-  typedef boost::bimap<nport, umm::umi::exec_location> nat_port_map_t;
-  typedef nat_port_map_t::left_map::const_iterator nat_port_map_left_iterator_t;
-  typedef nat_port_map_t::right_map::const_iterator nat_port_map_right_iterator_t;
   LoopbackDriver &lo;
-  ebbrt::SpinLock lock_;
+  ebbrt::SpinLock port_lock_;
+  ebbrt::SpinLock host_map_lock_;
+
   /** NAT state */
-  boost::icl::interval_set<nport> port_set_; /* set of allocatable ports */
-  nat_port_map_t nport_to_umi_map_; /* map of allocated ports */
-  port_map_t umi_port_map_; /* master port map cache */
+  port_set_t port_set_; /* set of allocatable ports */
+  port_map_t master_port_map_; /* map of allocated ports */
+  port_owner_map_t port_owner_map_; /* map of allocated ports */
+  
+  std::unordered_map<uint16_t, umi::id> host_src_port_map_;
 
   friend class UmProxy;
 };
@@ -69,23 +85,33 @@ public:
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmProxy");
   static void Init();
   static void DebugPrint(ebbrt::IOBuf::DataPointer dp);
+	// TODO: make private?
   static std::unique_ptr<ebbrt::MutIOBuf> raw_to_iobuf(const void *data,
                                                     const size_t len);
+  static internal_port_t internal_port(uint16_t port, umi::id id, 
+                                size_t core = (size_t)ebbrt::Cpu::GetMine()) {
+    return std::make_tuple(id, core, port);
+  }
 
+	// TODO: make private?
   static ebbrt::EthernetAddress client_internal_macaddr(){
     return {{0x06, 0xfe, 0x00, 0x00, 0x00, 0x00}};
   };
 
+	// TODO: make private?
   static ebbrt::Ipv4Address client_internal_ipv4() {
     return {{169, 254, 1, 0}};
   };
 
+	// TODO: make private?
   static ebbrt::Ipv4Address host_internal_ipv4() { return {{169, 254, 0, 1}}; }
 
+	// TODO: make private?
   ebbrt::EthernetAddress host_internal_macaddr(){
     return root_.lo.GetMacAddress();
   }
 
+	// TODO: make private?
   ebbrt::Ipv4Address host_external_ipv4() {
     return ebbrt::network_manager->IpAddress();
   }
@@ -102,27 +128,29 @@ public:
    */
   void ProcessIncoming(std::unique_ptr<ebbrt::IOBuf>, ebbrt::PacketInfo pinfo);
 
-  /** UmRead - Incoming data read to UM instance 
+  /** InstanceRead - Read packet (Called by instance)
    *  returns the amount of data read
    */
-  uint32_t UmRead(void *data, const size_t len);
+  uint32_t InstanceRead(void *data, const size_t len);
 
-  /**	UmHasData - Returns 'true' if there is data to be read */
-  bool UmHasData() { return !um_recv_queue_.empty(); }
+  /** InstanceHasData - Return true if there is data 
+   */
+  bool InstanceHasData();
 
-  /** LoadUmi - Clears transient state and sets a "loaded" umi_id */ 
-  void LoadUmi(umm::umi::id id) {
-    // TODO(jmcadden): Here we start considering unloading a running umi
-    clear_proxy_state();
-    umi_id_ = id;
-  };
+  /** SetActiveInstance - Clears transient state and sets a "loaded" umi_id */ 
+  void SetActiveInstance(umm::umi::id id);
+
+  /** RemoveInstanceState - Clears all proxy state for a given instance */
+  void RemoveInstanceState(umm::umi::id id); 
+  
 
 private:
   /* Translate nat port to internal src port */
   uint16_t swizzle_port_in(uint16_t);
   /* Translate internal src port to nat port */
   uint16_t swizzle_port_out(uint16_t);
-  ProxyRoot::umi_location nat_get_info(std::unique_ptr<ebbrt::MutIOBuf> &);
+  //ProxyRoot::umi_location nat_get_info(std::unique_ptr<ebbrt::MutIOBuf> &);
+
   bool nat_preprocess_in(std::unique_ptr<ebbrt::MutIOBuf> &);
   bool nat_preprocess_out(std::unique_ptr<ebbrt::MutIOBuf> &);
   /* Overwrite the destination IP and MAC with their internal values, apply port swizzle for external */
@@ -135,15 +163,15 @@ private:
   bool internal_destination(std::unique_ptr<ebbrt::MutIOBuf> &);
   /* Return true if source is (host) internal */
   bool internal_source(std::unique_ptr<ebbrt::MutIOBuf> &);
-  void clear_proxy_state() {
-    um_recv_queue_ = std::queue<std::unique_ptr<ebbrt::IOBuf>>();
-    umi_port_map_cache_.clear();
-    umi_id_ = 0;
-  }
+  /* Return internal port identifier for this core/umi */
+
+  /* Instance IO state */
   umm::umi::id umi_id_;
-  std::queue<std::unique_ptr<ebbrt::IOBuf>> um_recv_queue_;
+  //std::unordered_map<umm::umi::id, std::queue<std::unique_ptr<ebbrt::IOBuf>>>
+  //  umi_recv_queue_;
+
   ProxyRoot &root_;
-  port_map_t umi_port_map_cache_; /* core-local port map cache */
+  port_map_t port_map_cache_; /* core-local port map cache */
 };
 
 constexpr auto proxy = ebbrt::EbbRef<UmProxy>(UmProxy::global_id);

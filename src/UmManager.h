@@ -21,7 +21,9 @@
 
 namespace umm {
 
-/* Execution slot constants */ 
+#define DISABLE_YIELD 0
+
+/* Execution slot constants */
 const uintptr_t kSlotStartVAddr = 0xFFFFC00000000000;
 const uintptr_t kSlotEndVAddr = 0xFFFFC07FFFFFFFFF;
 const uint64_t kSlotPageLength = 0x7FFFFFF;
@@ -30,38 +32,95 @@ const uint16_t kSlotPML4Offset = 0x180;
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
-class UmManager : public ebbrt::MulticoreEbb<UmManager> {
+class UmManager : public ebbrt::MulticoreEbb<UmManager>,  public ebbrt::Timer::Hook {
 public:
+  /** Global EbbId */
+  static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
 
+  /** Class-wide static Ebb initialization */
+  static void Init(); 
 
+  /** Slot status values*/
+  enum Status : uint8_t { empty = 0, loaded, active, snapshot, idle, halting, finished };
+
+  /* Slot helper functions */ 
   inline bool valid_address(uintptr_t vaddr) {
     return vaddr && ((vaddr >= umm::kSlotStartVAddr) && (vaddr < umm::kSlotEndVAddr));
   }
 
-  static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
-  /** Execution slot status */
-  enum Status : uint8_t { empty = 0, loaded, running, snapshot, blocked, finished };
+  /** Load - Submit an instance to execute
+   *  Returned future complete when core is loaded
+   *  A loaded core cannot be yielded
+   */
+  ebbrt::Future<umi::id> Load(std::unique_ptr<UmInstance>);
+  std::unique_ptr<UmInstance> Start(umi::id);
 
-  /** Block UMI for nanoseconds */
-  void Block(size_t ns);
-
-  /** Class-wide static initialization */
-  static void Init(); 
-
-  /** Start execution of loaded instance */
+  /** Run - Submit an instance for execution instance
+    * Blocks calling event until Halt() has been processed for this instance.
+    * Execution may start execution immediatly or be queue until later
+    */
   std::unique_ptr<UmInstance> Run(std::unique_ptr<UmInstance>);
 
-  /** Stop the execution of a loaded instance */
-  void Halt();
+  /** Block - Sleep active instance for duration of 'ns' nanoseconds 
+  *   This is called by solo5-hypercall hander. 
+  */
+  void Block(size_t ns);
 
-  /* Utility methods */ 
+  /** Immediately halt the active instance */
+  void Halt(); 
+
+  /** Signal the core to halt UMI at the next opportunity */
+  void SignalHalt(umm::umi::id id); 
+
+  /** Signal the core to yield UMI at the next opportunity */
+  void SignalYield(umm::umi::id id); 
+
+  /** Signal the core to no longer yield UMI */
+  void SignalNoYield(umm::umi::id id); 
+
+  /** Signal the core to restore a yielded instance */
+  void SignalResume(umm::umi::id id);
+
+  /** Timer event handler */
+  void Fire() override;
+
+  /** Public utility/helpter functions */
+
+  /* Returns raw pointer to the active instance */
+  UmInstance *ActiveInstance() {
+    if (active_umi_)
+      return active_umi_.get();
+    return nullptr;
+  }
+
+  /* Returns raw pointer to the instance */
+  UmInstance *GetInstance(umm::umi::id umi) {
+    if (slot_has_instance() && umi == active_umi_->Id()) 
+      return active_umi_.get();
+    auto it = inactive_umi_map_.find(umi);
+    if( it != inactive_umi_map_.end()){
+      return it->second.get();
+    }
+    // Better check that your got a valid instance... lol
+    return nullptr;
+  }
+
+  /* Return slot status */ 
+  Status status() { return status_.get(); } ;
+
+  /* Return instance activation queue length */
+  size_t activation_queue_size() { return activation_promise_map_.size(); }
+
+  /** Return true if umi::id is active on this core */
+  bool is_active_instance(umm::umi::id);
+  
+  /** Return true is slot has an instance loaded */
+  bool slot_has_instance() { return (active_umi_) ? true : false; }
+
+  /* Fault handlers */ 
   void process_pagefault(ExceptionFrame *ef, uintptr_t addr);
   void process_gateway(ExceptionFrame *ef);
   void process_checkpoint(ExceptionFrame *ef);
-  Status status() { return status_.get(); } ;
-  /* Signal the manager to yeild the instance on next Block */
-  void signal_yield();
-
 
 private:
   /** 
@@ -71,21 +130,78 @@ private:
   public:
     void HandleFault(ebbrt::idt::ExceptionFrame *ef, uintptr_t addr) override;
   };
-  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
 
-  /**  //TODO: Rename SlotStatus 
+  /**  //TODO: Rename SlotStatus
     * Status tracks the status and runtime of slot exection
     */
   class UmmStatus {
   public:
     UmManager::Status get() { return s_; }
     void set(UmManager::Status);
-    uint64_t time() { return runtime_; /* in milliseconds */ }
+    uint64_t time() { return 0; /* in milliseconds */ }
   private:
     UmManager::Status s_ = empty;
     ebbrt::clock::Wall::time_point clock_;
-    uint64_t runtime_ = 0;
   }; // UmmStatus
+
+
+  /** Slot utilities - Load/unload/swap instances, controls slot state */
+
+  /** Load the slot with the given instance 
+   *  Return umi::id of loaded instance
+   *  Resulting slot status == 'loaded'
+   */
+  umi::id slot_load_instance(std::unique_ptr<UmInstance>);
+
+  /** Unload the active instance 
+   *  Return instance 
+   *  Resulting status == 'empty'
+   */
+  std::unique_ptr<UmInstance> slot_unload_instance();
+
+  /** Swap in the given instance, queue current (blocked) instance 
+   *  Return umi::id of loaded instance
+   *  Resulting status == 'loaded'
+   */
+  umi::id slot_swap_instance(std::unique_ptr<UmInstance>);
+
+  /** Attempt to yield current instance, load next queued instance 
+   *  Return umi::id of loaded instance
+   *  Resulting status == 'loaded' || 'idle'
+   */
+  void slot_yield_instance();
+
+  void slot_queue_move_to_front(umi::id);
+
+  // Trigger exection entry IN/OUT of the slot
+
+  void trigger_bp_exception() { __asm__ __volatile__("int3"); };
+
+  // Queue an instance for activation. Returns Future fifilled once loaded
+  // TODO: Is activation the right word here?
+  // Instance launch?
+  ebbrt::Future<umi::id> queue_instance_activation(std::unique_ptr<UmInstance>);
+
+  /** Inactive UMIs */
+  std::unordered_map<umi::id, std::unique_ptr<UmInstance>> inactive_umi_map_;
+  std::queue<umi::id> inactive_umi_queue_;
+  std::unordered_map<umi::id, bool> inactive_umi_halt_map_;
+
+  /** Queued Launches */
+  std::unordered_map<umi::id, ebbrt::Promise<umi::id>> activation_promise_map_;
+
+  /* Internal state */
+  // The active Um Instance
+  std::unique_ptr<UmInstance> active_umi_;
+  // Slot status
+  UmmStatus status_;
+
+  /** Timing */
+  void enable_timer(ebbrt::clock::Wall::time_point now);
+  void disable_timer(); 
+  bool timer_set = false;
+  ebbrt::clock::Wall::time_point clock_;
+  ebbrt::clock::Wall::time_point time_wait; // block until this time
 
   /** Internal Methods */
   simple_pte *getSlotPML4PTE();
@@ -93,23 +209,9 @@ private:
   void setSlotPDPTRoot(simple_pte* newRoot);
   void set_status( Status s ) { return status_.set(s);}
   void set_snapshot(uintptr_t vaddr);
-
-  /** Load/Unload Instance onto the core */
-  umi::id Load(std::unique_ptr<UmInstance>);
-  std::unique_ptr<UmInstance> Unload();
-  /** Swap out block instance */
-  umi::id Swap(std::unique_ptr<UmInstance>);
-  bool yeild_instance_ = false;
-
-  /** Active UMI references */
-  std::unique_ptr<UmInstance> active_umi_;
-  std::unordered_map<umi::id,std::unique_ptr<UmInstance>> inactive_umi_map_;
-  std::queue<umi::id> inactive_umi_queue_;
-
-  /* Internal state */
-  UmmStatus status_; // TODO: SlotStatus
 };
 
+/* Globel reference to the per-core UmManager instance */
 constexpr auto manager = 
     ebbrt::EbbRef<UmManager>(UmManager::global_id);
 }

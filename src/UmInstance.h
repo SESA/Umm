@@ -37,7 +37,7 @@ typedef std::pair<umi::id, umi::core> exec_location; // e.g., (ID, core)
  * state of the process.
  *
  */
-class UmInstance : public ebbrt::Timer::Hook  {
+class UmInstance  {
 public:
   /** Page Fault counters */
   struct PgFtCtrs {
@@ -62,7 +62,7 @@ public:
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
-  ~UmInstance();
+//  ~UmInstance();
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr);
   uintptr_t GetBackingPageCOW(uintptr_t vaddr);
@@ -72,19 +72,25 @@ public:
   // TODO(jmcadden): Move this interface into the UmSV
   void SetArguments(const uint64_t argc, const char *argv[] = nullptr);
 
-  /** Extract an SV at the given symbol (@vaddr) */
+  /** Trigger SV creation at the elf symbol located at vaddr */
   ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
 
-  /* Dump state of the instance*/
+  /* Stack Management */
+  void Activate();
+  void Deactivate();
+
+  /* Premption Management */
+  void EnableYield(); 
+  void DisableYield(); 
+  bool CanYield() { return yield_flag_; }
+
+  /* IO */
+  std::unique_ptr<ebbrt::IOBuf> ReadPacket();
+  void WritePacket(std::unique_ptr<ebbrt::IOBuf>);
+  bool HasData() { return (!umi_recv_queue_.empty()); };
+
+  /* Dump state of the Instance */
   void Print();
-
-  /** Timer event handler */
-  void Fire() override;
-  void Block(ebbrt::clock::Wall::time_point timeout);
-  void DisableTimers();
-
-  // TODO: Add runtime duration into the instance
-  size_t page_count = 0; // TODO: replace with region-specific counter
   umi::id Id(){ return id_; }
 
   // generic boot info structure
@@ -97,10 +103,16 @@ public:
   ebbrt::Promise<UmSV *> *snap_p;
 
 private:
-  bool timer_set = false;
-  ebbrt::clock::Wall::time_point time_wait; // block until this time
+  std::queue<std::unique_ptr<ebbrt::IOBuf>> umi_recv_queue_;
+  bool active_ = true;
   ebbrt::EventManager::EventContext *context_; // blocking context
   umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
+  size_t page_count = 0; // TODO: replace with region-specific counter
+  uint64_t runtime_ = 0;
+  bool yield_flag_ = false; // signal that the instance can be yielded 
+  // TODO: Computing runtime duration within the instance
+  // runtime_ += std::chrono::duration_cast<std::chrono::milliseconds>(now -
+  // clock_).count();
 }; // umm::UmInstance
 }
 
