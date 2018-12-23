@@ -11,7 +11,6 @@
 #include <ebbrt/GlobalStaticIds.h>
 #include <ebbrt/MulticoreEbb.h>
 #include <ebbrt/Timer.h>
-#include "UmSyscall.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 
@@ -43,10 +42,7 @@ const uint16_t kSlotPML4Offset = 0x180;
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
-  UmManager(){
-    // init syscall extensions and MSRs.
-    umm::syscall::enableSyscallSysret();
-  }
+  UmManager();
 
 #if PERF
   Counter ctr;

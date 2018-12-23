@@ -382,6 +382,11 @@ void UmPgTblMgmt::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
 void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
+  if(root == nullptr){
+    kabort("Root is nullptr\n");
+  }
+
+
   alignToLvl(lvl);
   printf("%s " CYAN "@ %p" RESET "[\n", level_names[lvl], root);
 
@@ -959,16 +964,20 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
   if (curLvl == mapLvl) {
     // We're in the table, modify the entry & importantly mark it dirty.
     // TODO: Should this always be marked accessed? Def in copy dirty.
-    // printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
-    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true);
+    printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
+    // Mark mapping PTE user.
+    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true, true, true);
   } else {
     if (exists(pte_ptr)) {
+      // Recurse to next level
       mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
     } else {
+      // Create next level and recurse.
       simple_pte *ret =
         mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
       // Dirty bit doesn't apply, accessed does.
-      pte_ptr->setPte(ret, false, true);
+      // Mark interior PTEs user.
+      pte_ptr->setPte(ret, false, true, true, true);
     }
   }
   return root;

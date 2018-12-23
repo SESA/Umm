@@ -3,8 +3,12 @@
 #
 include Makefile.common
 
-UMM_OBJS=$(UMM_SOURCE:$(SRCDIR)/%.cc=$(BUILDDIR)/%.o)
+# Gotta be a better way.
 UMM_SOURCE=$(wildcard $(SRCDIR)/*.cc)
+UMM_SOURCE+=$(wildcard $(SRCDIR)/*.S)
+
+UMM_OBJS_TMP=$(UMM_SOURCE:$(SRCDIR)/%.cc=$(BUILDDIR)/%.o)
+UMM_OBJS=$(UMM_OBJS_TMP:$(SRCDIR)/%.S=$(BUILDDIR)/%.o)
 
 all: build
 
@@ -19,6 +23,9 @@ $(EBBRT_SYSROOT): # verify we have an EbbRT toolchain
 
 $(BUILDDIR)/libumm.a: $(UMM_OBJS) | $(BUILDDIR) 
 	${EBBRTAR} ${UMM_ARFLAGS} $@ $(UMM_OBJS) 
+
+$(BUILDDIR)/%.o: $(SRCDIR)/%.S | $(BUILDDIR)
+	${EBBRTAS} $< -o $@
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cc | $(BUILDDIR)
 	${EBBRTCXX} ${UMM_CPP_FLAGS} -c $< -o $@

@@ -24,6 +24,7 @@ EBBRT_BIN_DIR=${EBBRT_SYSROOT}/usr/bin
 EBBRTCC=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-gcc
 EBBRTCXX=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-g++
 EBBRTAR=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-ar
+EBBRTAS=${EBBRT_BIN_DIR}/x86_64-pc-ebbrt-as
 
 # Umm
 UMM_CPP_FLAGS=-std=gnu++14 -Wall -Werror -MD -MP --sysroot=$(EBBRT_SYSROOT)

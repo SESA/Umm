@@ -27,11 +27,11 @@ const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.
  * Block until timeout_nsecs have passed or I/O is
  * possible, whichever is sooner. Returns 1 if I/O is possible, otherwise 0.
  */
-int solo5_hypercall_poll(volatile void *arg); 
+void solo5_hypercall_poll(volatile void *arg); 
 
-int solo5_hypercall_netinfo(volatile void *arg); 
-int solo5_hypercall_netread(volatile void *arg);
-int solo5_hypercall_netwrite(volatile void *arg);
+void solo5_hypercall_netinfo(volatile void *arg); 
+void solo5_hypercall_netread(volatile void *arg);
+void solo5_hypercall_netwrite(volatile void *arg);
 
 static void solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
@@ -106,32 +106,6 @@ static inline uint64_t Solo5BootArguments(uint64_t kernel_end,
   kern_info->cpu.hypercall_ptr[UKVM_HYPERCALL_HALT] =
       (uint64_t)solo5_hypercall_halt;
   return (uint64_t)kern_info;
-}
-
-static void (*sys_calls[11])(volatile void *) = {
-    NULL,
-    solo5_hypercall_walltime,
-    solo5_hypercall_puts,
-    solo5_hypercall_poll,
-    solo5_hypercall_blkinfo,
-    solo5_hypercall_blkwrite,
-    solo5_hypercall_blkread,
-    solo5_hypercall_netinfo,
-    solo5_hypercall_netwrite,
-    solo5_hypercall_netread,
-    solo5_hypercall_halt,
-};
-
-void call_handler(int n, void *arg) {
-  uint64_t rip;
-  asm volatile("mov %%rcx, %0;" : "=r"(rip) : :);
-
-  printf("In call_handler with arg #%d, input %p \n", n, arg);
-
-  sys_calls[n](arg);
-
-  __asm__ __volatile__("mov %0, %%rcx" ::"r"(rip));
-  __asm__ __volatile__("sysretq");
 }
 
 #endif // UMM_UM_SOLO5_H_

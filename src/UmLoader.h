@@ -10,7 +10,8 @@
  */
 
 #include "umm-common.h"
-#include "umm-solo5.h"
+// #include "umm-solo5.h"
+#include "UmManager.h"
 
 #include "UmInstance.h"
 #include "UmSV.h"

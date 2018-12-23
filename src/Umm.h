@@ -12,5 +12,6 @@
 #include "UmLoader.h"
 #include "UmManager.h"
 #include "UmSV.h"
+#include "umm-solo5.h" // SOLO5_USR_REGION_SIZE
 
 #endif // UMM_UMM_H_

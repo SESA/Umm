@@ -14,6 +14,13 @@
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
 
+umm::UmManager::UmManager(){
+  // Instrument gdt with user segments.
+  umm::syscall::addUserSegments();
+  // init syscall extensions and MSRs.
+  umm::syscall::enableSyscallSysret();
+}
+
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   kprintf(MAGENTA "Umm... Taking a snapshot!!!\n" RESET);
   // Set resume flag to prevent infinite retriggering of exception
@@ -73,7 +80,39 @@ void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
   else
     kabort();
 }
+#if 0
+uintptr_t hackyRIP;
+// HACK
 
+void primordial_sysret(){
+  // How we first get into userspace.
+  // We're after iret, not on any real stack.
+  // We squirreled the entry point into RSP.
+
+  // __asm__ __volatile__("movq %rsp, %rcx"); //RIP loaded from RCX
+
+  __asm__ __volatile__("mov %0, %%rcx" ::"r"(hackyRIP));
+
+
+  // HACK: This is some value that appears to work.
+  // Might want to consider what it means.
+  // __asm__ __volatile__("movq 0x46, %r11"); // R11 is moved into flags.
+  // uint64_t rflags = 0x46; // Read using GDB
+  __asm__ __volatile__("movq %0, %%r11" ::"r"(0x2ULL));
+
+
+  // HACK: Software swings RSP. This is a bullshit val that might overwirte
+  // Translation mem when it underflows. We've seen it work in the past.
+  // During Rump kernel boot, this is swung to our correct "Heap" region.
+  // TODO: At least swing to user region.
+  __asm__ __volatile__("movq %0, %%rsp" ::"r"((uintptr_t) umm::kSlotEndVAddr & ~0xfULL));
+
+  // To usermode we go!
+  __asm__ __volatile__("sysretq");
+  // Never return here
+  kabort("Returning from impossible point\n");
+}
+#endif
 void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   // This is the enter / exit point for the function execution.
   // If the core is in the loaded position, we enter, if alerady running, we exit.
@@ -88,7 +127,33 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
 
     // Overwrite exception frame from sv, setup by loader / setArguments().
     *ef = umi_->sv_.ef;
+
     set_status(running);
+
+#ifdef USE_SYSCALL
+    ef->cs = (3 << 3) | 3;
+    ef->ss = (4 << 3) | 3;
+    ef->rsp = 0xFFFFC07FFFFFFFF0;
+    {int db=1; while(db);}
+#endif
+#if 0
+    {
+
+      // HACK to get into userspace, jump to the trampoline.
+
+      // Store entry pt into rsp.
+      hackyRIP = (uintptr_t) ef->rip;
+      printf("Iret to %p\n", (void *)primordial_sysret);
+      printf("Then sysret to %p\n", (void *) hackyRIP);
+      // Change entry pt to our trampoline.
+      ef->rip = (uint64_t) primordial_sysret;
+
+      // uint64_t count = 1ULL << 50;
+      // while(count --)
+      //   __asm__ __volatile__("nop");
+    }
+#endif
+
     return;
   }
 
@@ -265,16 +330,15 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry.
-    // kprintf_force(RED "Mapping to null pt\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                           TBL_LEVEL, PDPT_LEVEL, writeFault);
 
     // "Install". Set accessed in case a walker strides accessed pages.
-    slotRoot->setPte(pdpt, false, true);
+    // Mark PML4 Ent User.
+    slotRoot->setPte(pdpt, false, true, true, true);
 
   } else {
     // Slot root holds ptr to sub PT.
-    // kprintf_force(RED "Mapping to pt root %p\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
                               phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL, writeFault);
   }
@@ -284,11 +348,6 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
     umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
 
-
-  // if(vaddr == 0xffffc000000014a0 ){
-  //   umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
-  // }
-  // kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
@@ -323,7 +382,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
   // If we have a vaild pth root, install it.
   auto pthRoot = umi->sv_.pth.Root();
   if(pthRoot != nullptr){
-    // kprintf("Installing instance pte root.\n");
+    kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
     // kprintf("Slot root is %p\n", pdptRoot);
@@ -364,11 +423,7 @@ void umm::UmManager::runSV() {
   kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
 
-#ifdef USE_SYSCALL
-  umm::syscall::trigger_sysret();
-#else
   trigger_bp_exception();
-#endif
 
 }
 
@@ -396,7 +451,7 @@ void umm::UmManager::Halt() {
   context_ = nullptr;
 
 #ifdef USE_SYSCALL
-  umm::syscall::trigger_syscall();
+  // umm::syscall::trigger_syscall();
 #else
   trigger_bp_exception();
 #endif
