@@ -30,7 +30,7 @@ void twoCoreTest(){
   // Generated UM Instance from the linked in Elf
   umm::manager->Load(std::move(umi));
 
-  ebbrt::Future<umm::UmSV> snap_f = umm::manager->SetCheckpoint(
+  ebbrt::Future<umm::UmSV*> snap_f = umm::manager->SetCheckpoint(
    umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
   // umm::ElfLoader::GetSymbolAddress("rumprun_main1"));
                                                                 //umm::ElfLoader::GetSymbolAddress("uv_uptime"));
@@ -38,12 +38,12 @@ void twoCoreTest(){
   // NOTE: Using kickoff here, start on other core.
   umm::manager->runSV();
 
-  snap_f.Then([](ebbrt::Future<umm::UmSV> snap_f) {
-      umm::UmSV snap = snap_f.Block().Get();
+  snap_f.Then([](ebbrt::Future<umm::UmSV*> snap_f) {
+      umm::UmSV* snap = snap_f.Block().Get();
       // Deploy this snapshot on next core
       ebbrt::event_manager->SpawnRemote(
           [snap]() {
-            auto umi = std::make_unique<umm::UmInstance>(snap);
+            auto umi = std::make_unique<umm::UmInstance>(*snap);
             umm::manager->Load(std::move(umi));
             umm::manager->runSV();
           },
@@ -67,8 +67,8 @@ void singleCoreTest(){
   umm::manager->runSV();
   umm::manager->Unload();
 
-  umm::UmSV snap = snap_f.Get();
-  auto umi2 = std::make_unique<umm::UmInstance>(snap);
+  umm::UmSV* snap = snap_f.Get();
+  auto umi2 = std::make_unique<umm::UmInstance>(*snap);
   umm::manager->Load(std::move(umi2));
   umm::manager->runSV();
   umm::manager->Unload();
