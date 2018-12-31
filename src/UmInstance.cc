@@ -8,14 +8,38 @@
 #include "UmInstance.h"
 #include "umm-internal.h"
 
-// TODO: this feels bad.
+#include "UmPgTblMgr.h" // User page HACK XXX
+
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
+
+void hackSetPgUsr(uintptr_t vaddr, int bytes){
+  // HACK: Setting the whole page user accessible. Totally unacceptable. XXX
+
+  // Make sure on single.
+  kassert(vaddr >> 21 == (vaddr + bytes) >> 21);
+
+
+  // print path to page
+  umm::lin_addr la; la.raw = vaddr;
+  umm::simple_pte *cr3 = umm::UmPgTblMgmt::getPML4Root();
+  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
+
+  // set user  this flushes.
+  umm::UmPgTblMgmt::setUserAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
+
+  // print path to page
+  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
+
+}
 
 void umm::UmInstance::SetArguments(const uint64_t argc,
                                    const char *argv[]) {
   // NOTE: Should we be referencing this type?
   // Shallow copy of boot info.
   bi = malloc(sizeof(ukvm_boot_info));
+  // printf(RED "Boot info at %p\n" RESET, bi);
+  hackSetPgUsr((uintptr_t)bi, sizeof(ukvm_boot_info));
+
   auto kvm_args = (ukvm_boot_info *) argc;
   std::memcpy(bi, (const void *)kvm_args, sizeof(ukvm_boot_info));
   {
@@ -23,6 +47,9 @@ void umm::UmInstance::SetArguments(const uint64_t argc,
     // Make buffer for a deep copy.
     // Need to add 1 for null.
     char *tmp = (char *) malloc(strlen(bi_v->cmdline) + 1);
+    // printf(RED "cmdline at %p\n" RESET, tmp);
+    hackSetPgUsr((uintptr_t)tmp, strlen(bi_v->cmdline) + 1);
+
     // Do the copy.
     strcpy(tmp, bi_v->cmdline);
     // Swing ptr intentionally dropping old.
@@ -80,7 +107,7 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
   auto bp_start_addr = backing_page.ToAddr();
 
   // Copy data on that page. Remember vaddr is still old write protected page.
-  // kprintf_force(MAGENTA "Copy dst %p, src %p!" RESET, bp_start_addr, vaddr);
+  // kprintf_force(MAGENTA "Copy dst %p, src %p!\n" RESET, bp_start_addr, vaddr);
   std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
 
   return bp_start_addr;

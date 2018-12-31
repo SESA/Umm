@@ -14,11 +14,20 @@
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
 
+uintptr_t umm::UmManager::GetCallerStack(){
+  return caller_restore_frame_.rsp;
+}
+
 umm::UmManager::UmManager(){
+#ifdef USE_SYSCALL
   // Instrument gdt with user segments.
   umm::syscall::addUserSegments();
   // init syscall extensions and MSRs.
   umm::syscall::enableSyscallSysret();
+
+  // Don't fault during fn exec.
+  umm::proxy->UmClearData();
+#endif
 }
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
@@ -131,29 +140,15 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
     set_status(running);
 
 #ifdef USE_SYSCALL
-    ef->cs = (3 << 3) | 3;
-    ef->ss = (4 << 3) | 3;
-    ef->rsp = 0xFFFFC07FFFFFFFF0;
-    {int db=1; while(db);}
+    // Config gdt segments for user.
+    ef->ss = (3 << 3) | 3;
+    ef->cs = (4 << 3) | 3;
+
+    // New execution sets rsp. Redeploy doesn't.
+    if(ef->rsp == 0)
+      ef->rsp = 0xFFFFC07FFFFFFFF0;
+
 #endif
-#if 0
-    {
-
-      // HACK to get into userspace, jump to the trampoline.
-
-      // Store entry pt into rsp.
-      hackyRIP = (uintptr_t) ef->rip;
-      printf("Iret to %p\n", (void *)primordial_sysret);
-      printf("Then sysret to %p\n", (void *) hackyRIP);
-      // Change entry pt to our trampoline.
-      ef->rip = (uint64_t) primordial_sysret;
-
-      // uint64_t count = 1ULL << 50;
-      // while(count --)
-      //   __asm__ __volatile__("nop");
-    }
-#endif
-
     return;
   }
 
@@ -268,6 +263,8 @@ void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
   //   kprintf_force(RED);
   // }
 
+  pfc.pgFaults++;
+
   // Write or Read?
   if(ec.WR){
     if(ec.P){
@@ -291,35 +288,64 @@ void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
   // kprintf_force(RESET);
 }
 
+void errorCodePrinter(uintptr_t vaddr, x86_64::PgFaultErrorCode ec) {
+  kprintf_force(MAGENTA "fault addr is %p, err: %x ", vaddr, ec.val);
+  if (ec.P) {
+    kprintf_force("[Pres] ");
+  }
+  if (ec.WR) {
+    kprintf_force("[Write ] ");
+  }
+  if (ec.US) {
+    kprintf_force("[User ] ");
+  }
+  if (ec.RES0) {
+    kprintf_force("[Res bits ] ");
+  }
+  if (ec.ID) {
+    kprintf_force("[Ins Fetch ] ");
+  }
+  kprintf_force("\n" RESET);
+}
+
+void printPTWalk(uintptr_t virt, umm::simple_pte* root, unsigned char lvl){
+  umm::lin_addr la;
+  la.raw = virt;
+  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, root, lvl);
+}
+
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
-  pfc.pgFaults++;
-  if(status() == snapshot)
-    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
   kassert(status() != empty);
   kassert(valid_address(vaddr));
+  if(status() == snapshot)
+    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
   logFaults(ec);
+  // errorCodePrinter(vaddr, ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
   lin_addr virt;
   virt.raw = virtual_page_addr;
 
+
   /* Pass to the mounted sv to select/allocate the backing page */
   uintptr_t physical_start_addr = 0;
   if(ec.P == 1){
     // kprintf_force("Copy on write a page!\n");
     physical_start_addr = umi_->GetBackingPageCOW(virtual_page_addr);
+
   } else{
     physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
   }
+  kassert(physical_start_addr != 0);
+
 
   lin_addr phys;
   phys.raw = physical_start_addr;
-  kassert(physical_start_addr != 0);
 
   simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
   simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
@@ -347,6 +373,7 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(ec.P){
     umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
+  // printPTWalk(vaddr, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
 
 }
 
@@ -370,7 +397,8 @@ umm::simple_pte* umm::UmManager::getSlotPML4PTE(){
 
 void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   kassert(newRoot != nullptr);
-  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
+  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true, true, true);
+  // (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
@@ -423,7 +451,16 @@ void umm::UmManager::runSV() {
   kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
 
+  // NOTE: We transfer to sv execution here via the breakpoint exception!!!
   trigger_bp_exception();
+  // NOTE: After Halt is called triggering it's own #BP we reload to this state.
+
+  // Cleanup execution.
+  // Clear proxy data
+  proxy->UmClearData();
+  DisableTimers();
+  delete context_;
+  context_ = nullptr;
 
 }
 
@@ -444,17 +481,7 @@ void umm::UmManager::Halt() {
   // TODO:This might be a little harsh in general, but useful for debugging.
   kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
-  // Clear proxy data
-  proxy->UmClearData();
-  DisableTimers();
-  delete context_;
-  context_ = nullptr;
-
-#ifdef USE_SYSCALL
-  // umm::syscall::trigger_syscall();
-#else
   trigger_bp_exception();
-#endif
 }
 
 ebbrt::Future<umm::UmSV*> umm::UmManager::SetCheckpoint(uintptr_t vaddr){
