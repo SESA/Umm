@@ -43,12 +43,12 @@ const uint16_t kSlotPML4Offset = 0x180;
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
   UmManager();
+  uintptr_t GetCallerStack();
 
 #if PERF
   Counter ctr;
 #endif
 
-  // TODO HACK XXX DELETEME:
   std::unique_ptr<UmInstance> umi_;
   simple_pte* getSlotPDPTRoot();
 
