@@ -49,7 +49,7 @@ void userFn() {
   __asm__ __volatile__("syscall");
 
   arr[1]=6;
-  __asm__ __volatile__("mov %0, %%edi" ::"r"(0x1));
+  __asm__ __volatile__("mov %0, %%edi" ::"r"(0x2));
   __asm__ __volatile__("movq %0, %%rsi" ::"r"(&arr[1]));
   __asm__ __volatile__("syscall");
 
