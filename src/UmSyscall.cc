@@ -26,31 +26,37 @@ const char *hypercall_names[11]{"NULL",
                               "solo5_hypercall_netwrite",
                               "solo5_hypercall_netread",
                               "solo5_hypercall_halt"};
-uintptr_t hackRSP;
 extern "C" {
   void sys_call_handler(int n, void *arg) {
     // Do a stack switch, then vector off the hypercall.
 
+    // TODO this is a shit show, need to figure out how to
+    // get kernel stack into a shared symbol we can ref in .S.
+
     // We come in on the user fn stack.
-    asm volatile("movq %%rsp, %0;" : "=r"(hackRSP) : :);
+    uintptr_t fnRSP;
+    asm volatile("movq %%rsp, %0;" : "=r"(fnRSP) : :);
 
     {
       // Get kern stack
-      uintptr_t kern_rsp = umm::manager->GetCallerStack();
-
-      uintptr_t aligned_kern_rsp = kern_rsp & ~0xF; // force 16 byte alignment
+      uintptr_t kern_rsp = umm::manager->GetKernStackPtr();
+      // force 16 byte alignment, don't allow smashing.
+      // This causes a bug, but something like it could be necessary per the abi.
+      // uintptr_t aligned_kern_rsp = (kern_rsp & ~0xF) + 16;
 
       // Swizzle onto kern stack
-      __asm__ __volatile__("movq %0, %%rsp" ::"r"(aligned_kern_rsp));
+      __asm__ __volatile__("movq %0, %%rsp" ::"r"(kern_rsp));
+
+      // Trying to keep this off the user stack.
+      umm::manager->SaveFnStackPtr(fnRSP);
 
     }
 
     // kprintf("\t%s, arg: %p\n", hypercall_names[n], arg);
-    // kprintf(CYAN "User stack at %p\n" RESET, hackRSP);
     sys_calls[n](arg);
 
     // Swizzle back to user.
-    __asm__ __volatile__("mov %0, %%rsp" ::"r"(hackRSP));
+    __asm__ __volatile__("mov %0, %%rsp" ::"r"(umm::manager->RestoreFnStackPtr()));
   }
 }
 

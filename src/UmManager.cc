@@ -14,8 +14,18 @@
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
 
-uintptr_t umm::UmManager::GetCallerStack(){
+uintptr_t umm::UmManager::GetKernStackPtr() const{
   return caller_restore_frame_.rsp;
+}
+
+uintptr_t umm::UmManager::RestoreFnStackPtr() const {
+  // return caller_restore_frame_.rsp;
+  return this->fnStack;
+}
+
+void umm::UmManager::SaveFnStackPtr(const uintptr_t fnStack){
+  // return caller_restore_frame_.rsp;
+  this->fnStack = fnStack;
 }
 
 umm::UmManager::UmManager(){

@@ -43,7 +43,12 @@ const uint16_t kSlotPML4Offset = 0x180;
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
   UmManager();
-  uintptr_t GetCallerStack();
+  uintptr_t GetKernStackPtr() const;
+  // TODO for threading, will have to move this to the umi?
+  uintptr_t fnStack;
+  uintptr_t RestoreFnStackPtr() const;
+  void SaveFnStackPtr(const uintptr_t fnStack);
+
 
 #if PERF
   Counter ctr;
