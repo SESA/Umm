@@ -882,6 +882,8 @@ lin_addr UmPgTblMgmt::reconstructLinAddrPgFromOffsets(uint64_t *idx){
 
 lin_addr UmPgTblMgmt::copyDirtyPage(lin_addr src, unsigned char lvl){
   auto page = ebbrt::page_allocator->Alloc();
+  // if(page == Pfn::None())
+  //   kprintf_force(RED "Ran out of pages\n" RESET);
   kbugon(page == Pfn::None());
   auto page_addr = page.ToAddr();
   memcpy((void*)page_addr, (void*)src.raw, 1UL << pgShifts[lvl]);

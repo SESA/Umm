@@ -9,12 +9,12 @@
 #include "umm-internal.h"
 
 // DEBUG NETWORK TRACE
-#define DEBUG_PRINT_ETH 1
-#define DEBUG_PRINT_ARP 1
-#define DEBUG_PRINT_IP  1
-#define DEBUG_PRINT_TCP 1
-#define DEBUG_PRINT_UDP 1
-#define DEBUG_PRINT_IO  1
+#define DEBUG_PRINT_ETH 0
+#define DEBUG_PRINT_ARP 0
+#define DEBUG_PRINT_IP  0
+#define DEBUG_PRINT_TCP 0
+#define DEBUG_PRINT_UDP 0
+#define DEBUG_PRINT_IO  0
 
 void umm::UmProxy::Init() {
   // Setup Ebb translations

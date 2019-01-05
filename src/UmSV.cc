@@ -4,9 +4,18 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 #include "UmSV.h"
 #include "UmRegion.h"
-#include "umm-internal.h"
 
+#include "umm-internal.h"
 namespace umm{
+  UmSV::UmSV(const UmSV& rhs){
+    kassert(&rhs != nullptr);
+
+    // kprintf(RED "region list copy\n" RESET);
+    region_list_ = rhs.region_list_;
+    ef = rhs.ef;
+    pth = rhs.pth;
+    // kprintf(GREEN "Copy cons.\n" RESET);
+  }
 
 void UmSV::SetEntry(uintptr_t paddr) { ef.rip = paddr; }
   void UmSV::AddRegion(Region &reg) { region_list_.push_back(reg); }
@@ -23,6 +32,7 @@ Region& UmSV::GetRegionOfAddr(uintptr_t vaddr) {
     }
   }
   kabort("Umm... No region found for addr %p n", vaddr);
+  while(1);
 }
 
 
@@ -35,6 +45,7 @@ UmSV::GetRegionByName(const char* p){
   }
   kprintf_force("A region by that name doesn't exist.\n");
   kabort();
+  while(1);
 }
 
 } // namespace umm

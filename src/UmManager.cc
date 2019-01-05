@@ -153,12 +153,12 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
     // Config gdt segments for user.
     ef->ss = (3 << 3) | 3;
     ef->cs = (4 << 3) | 3;
+#endif
 
     // New execution sets rsp. Redeploy doesn't.
     if(ef->rsp == 0)
       ef->rsp = 0xFFFFC07FFFFFFFF0;
 
-#endif
     return;
   }
 
@@ -225,7 +225,7 @@ OK:
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef){
   kassert(status() != snapshot);
   // ebbrt::kprintf_force(CYAN "Snapshotting, core %d \n" RESET, (size_t) ebbrt::Cpu::GetMine());
-  pfc.dump_ctrs();
+  // pfc.dump_ctrs();
   set_status(snapshot);
 
   UmSV* snap_sv = new UmSV();

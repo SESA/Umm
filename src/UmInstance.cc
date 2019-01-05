@@ -22,13 +22,13 @@ void hackSetPgUsr(uintptr_t vaddr, int bytes){
   // print path to page
   umm::lin_addr la; la.raw = vaddr;
   umm::simple_pte *cr3 = umm::UmPgTblMgmt::getPML4Root();
-  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
+  // umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
 
   // set user  this flushes.
   umm::UmPgTblMgmt::setUserAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
 
   // print path to page
-  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
+  // umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, cr3, PML4_LEVEL);
 
 }
 
@@ -76,6 +76,7 @@ uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
 
   /* Allocate new physical page for the faulted region */
   Pfn backing_page = ebbrt::page_allocator->Alloc();
+  kbugon(backing_page == Pfn::None());
   page_count++;
   auto bp_start_addr = backing_page.ToAddr();
 
@@ -103,6 +104,7 @@ uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
 
   /* Allocate new physical page for the faulted region */
   Pfn backing_page = ebbrt::page_allocator->Alloc();
+  kbugon(backing_page == Pfn::None());
   page_count++;
   auto bp_start_addr = backing_page.ToAddr();
 

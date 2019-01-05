@@ -34,8 +34,12 @@ extern "C" {
     // get kernel stack into a shared symbol we can ref in .S.
 
     // We come in on the user fn stack.
-    uintptr_t fnRSP;
-    asm volatile("movq %%rsp, %0;" : "=r"(fnRSP) : :);
+    {
+      uintptr_t fnRSP;
+      asm volatile("movq %%rsp, %0;" : "=r"(fnRSP) : :);
+      // Get this off the user stack.
+      umm::manager->SaveFnStackPtr(fnRSP);
+    }
 
     {
       // Get kern stack
@@ -47,8 +51,6 @@ extern "C" {
       // Swizzle onto kern stack
       __asm__ __volatile__("movq %0, %%rsp" ::"r"(kern_rsp));
 
-      // Trying to keep this off the user stack.
-      umm::manager->SaveFnStackPtr(fnRSP);
 
     }
 
@@ -235,12 +237,12 @@ void addUserSegments(){
     ucs->d.hi_base = 0;
   }
 
-  printGDTEnt(1);
-  printGDTEnt(2);
-  printGDTEnt(3);
-  printGDTEnt(4);
-  printGDTEnt(5);
-  printGDTEnt(6);
+  // printGDTEnt(1);
+  // printGDTEnt(2);
+  // printGDTEnt(3);
+  // printGDTEnt(4);
+  // printGDTEnt(5);
+  // printGDTEnt(6);
 
 }
 void cpuGetMSR(uint32_t msr, uint32_t *hi, uint32_t *lo) {
@@ -295,11 +297,11 @@ void configureSupSegments64(uintptr_t syscallHandler) {
     // Write fake value, 4, into SYSCALL reg.
     hi = hi | ( (1 << 3) | 0);
 
-    printf(RED "Setting sysret cs. hi is %#x\n" RESET, hi);
+    // printf(RED "Setting sysret cs. hi is %#x\n" RESET, hi);
     cpuSetMSR(IA32_STAR_MSR, hi, lo);
 
     cpuGetMSR(IA32_STAR_MSR, &hi, &lo);
-    printf(RED "New MSR val hi is %#x\n" RESET, hi);
+    // printf(RED "New MSR val hi is %#x\n" RESET, hi);
   }
 
   {
@@ -358,11 +360,11 @@ void configureSupSegments64(uintptr_t syscallHandler) {
       // Write 3 into bits 48 and 49.
       hi = hi | (3 << 16);
 
-      printf(CYAN "Setting sysret cs. hi is %#x\n" RESET, hi);
+      // printf(CYAN "Setting sysret cs. hi is %#x\n" RESET, hi);
       cpuSetMSR(IA32_STAR_MSR, hi, lo);
 
       cpuGetMSR(IA32_STAR_MSR, &hi, &lo);
-      printf(CYAN "New MSR val hi is %#x\n" RESET, hi);
+      // printf(CYAN "New MSR val hi is %#x\n" RESET, hi);
 
   }
 
