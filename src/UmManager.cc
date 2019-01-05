@@ -8,10 +8,37 @@
 #include "UmPgTblMgr.h"
 #include "UmProxy.h"
 #include "UmRegion.h"
+#include "UmSyscall.h"
 #include "umm-internal.h"
 
 #include <ebbrt/native/VMemAllocator.h>
 #include <atomic>
+
+uintptr_t umm::UmManager::GetKernStackPtr() const{
+  return caller_restore_frame_.rsp;
+}
+
+uintptr_t umm::UmManager::RestoreFnStackPtr() const {
+  // return caller_restore_frame_.rsp;
+  return this->fnStack;
+}
+
+void umm::UmManager::SaveFnStackPtr(const uintptr_t fnStack){
+  // return caller_restore_frame_.rsp;
+  this->fnStack = fnStack;
+}
+
+umm::UmManager::UmManager(){
+#ifdef USE_SYSCALL
+  // Instrument gdt with user segments.
+  umm::syscall::addUserSegments();
+  // init syscall extensions and MSRs.
+  umm::syscall::enableSyscallSysret();
+
+  // Don't fault during fn exec.
+  umm::proxy->UmClearData();
+#endif
+}
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   kprintf(MAGENTA "Umm... Taking a snapshot!!!\n" RESET);
@@ -72,7 +99,39 @@ void debugKickoff(ebbrt::idt::ExceptionFrame *ef){
   else
     kabort();
 }
+#if 0
+uintptr_t hackyRIP;
+// HACK
 
+void primordial_sysret(){
+  // How we first get into userspace.
+  // We're after iret, not on any real stack.
+  // We squirreled the entry point into RSP.
+
+  // __asm__ __volatile__("movq %rsp, %rcx"); //RIP loaded from RCX
+
+  __asm__ __volatile__("mov %0, %%rcx" ::"r"(hackyRIP));
+
+
+  // HACK: This is some value that appears to work.
+  // Might want to consider what it means.
+  // __asm__ __volatile__("movq 0x46, %r11"); // R11 is moved into flags.
+  // uint64_t rflags = 0x46; // Read using GDB
+  __asm__ __volatile__("movq %0, %%r11" ::"r"(0x2ULL));
+
+
+  // HACK: Software swings RSP. This is a bullshit val that might overwirte
+  // Translation mem when it underflows. We've seen it work in the past.
+  // During Rump kernel boot, this is swung to our correct "Heap" region.
+  // TODO: At least swing to user region.
+  __asm__ __volatile__("movq %0, %%rsp" ::"r"((uintptr_t) umm::kSlotEndVAddr & ~0xfULL));
+
+  // To usermode we go!
+  __asm__ __volatile__("sysretq");
+  // Never return here
+  kabort("Returning from impossible point\n");
+}
+#endif
 void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
   // This is the enter / exit point for the function execution.
   // If the core is in the loaded position, we enter, if alerady running, we exit.
@@ -87,7 +146,19 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
 
     // Overwrite exception frame from sv, setup by loader / setArguments().
     *ef = umi_->sv_.ef;
+
     set_status(running);
+
+#ifdef USE_SYSCALL
+    // Config gdt segments for user.
+    ef->ss = (3 << 3) | 3;
+    ef->cs = (4 << 3) | 3;
+#endif
+
+    // New execution sets rsp. Redeploy doesn't.
+    if(ef->rsp == 0)
+      ef->rsp = 0xFFFFC07FFFFFFFF0;
+
     return;
   }
 
@@ -202,6 +273,8 @@ void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
   //   kprintf_force(RED);
   // }
 
+  pfc.pgFaults++;
+
   // Write or Read?
   if(ec.WR){
     if(ec.P){
@@ -225,35 +298,64 @@ void umm::UmManager::logFaults(x86_64::PgFaultErrorCode ec){
   // kprintf_force(RESET);
 }
 
+void errorCodePrinter(uintptr_t vaddr, x86_64::PgFaultErrorCode ec) {
+  kprintf_force(MAGENTA "fault addr is %p, err: %x ", vaddr, ec.val);
+  if (ec.P) {
+    kprintf_force("[Pres] ");
+  }
+  if (ec.WR) {
+    kprintf_force("[Write ] ");
+  }
+  if (ec.US) {
+    kprintf_force("[User ] ");
+  }
+  if (ec.RES0) {
+    kprintf_force("[Res bits ] ");
+  }
+  if (ec.ID) {
+    kprintf_force("[Ins Fetch ] ");
+  }
+  kprintf_force("\n" RESET);
+}
+
+void printPTWalk(uintptr_t virt, umm::simple_pte* root, unsigned char lvl){
+  umm::lin_addr la;
+  la.raw = virt;
+  umm::UmPgTblMgmt::dumpAllPTEsWalkLamb(la, root, lvl);
+}
+
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
-  pfc.pgFaults++;
-  if(status() == snapshot)
-    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
   kassert(status() != empty);
   kassert(valid_address(vaddr));
+  if(status() == snapshot)
+    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
   logFaults(ec);
+  // errorCodePrinter(vaddr, ec);
 
   auto virtual_page = Pfn::Down(vaddr);
   auto virtual_page_addr = virtual_page.ToAddr();
   lin_addr virt;
   virt.raw = virtual_page_addr;
 
+
   /* Pass to the mounted sv to select/allocate the backing page */
   uintptr_t physical_start_addr = 0;
   if(ec.P == 1){
     // kprintf_force("Copy on write a page!\n");
     physical_start_addr = umi_->GetBackingPageCOW(virtual_page_addr);
+
   } else{
     physical_start_addr = umi_->GetBackingPage(virtual_page_addr);
   }
+  kassert(physical_start_addr != 0);
+
 
   lin_addr phys;
   phys.raw = physical_start_addr;
-  kassert(physical_start_addr != 0);
 
   simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
   simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
@@ -264,16 +366,15 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry.
-    // kprintf_force(RED "Mapping to null pt\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                           TBL_LEVEL, PDPT_LEVEL, writeFault);
 
     // "Install". Set accessed in case a walker strides accessed pages.
-    slotRoot->setPte(pdpt, false, true);
+    // Mark PML4 Ent User.
+    slotRoot->setPte(pdpt, false, true, true, true);
 
   } else {
     // Slot root holds ptr to sub PT.
-    // kprintf_force(RED "Mapping to pt root %p\n" RESET, slotRoot->pageTabEntToAddr(PML4_LEVEL).raw);
     UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
                               phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL, writeFault);
   }
@@ -282,12 +383,8 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   if(ec.P){
     umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
+  // printPTWalk(vaddr, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
 
-
-  // if(vaddr == 0xffffc000000014a0 ){
-  //   umm::UmPgTblMgmt::dumpFullTableAddrs(umm::manager->getSlotPDPTRoot(), PDPT_LEVEL);
-  // }
-  // kprintf_force(RED "slot root is %p\n" RESET, umm::manager->getSlotPDPTRoot());
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
@@ -310,7 +407,8 @@ umm::simple_pte* umm::UmManager::getSlotPML4PTE(){
 
 void umm::UmManager::setSlotPDPTRoot(umm::simple_pte* newRoot){
   kassert(newRoot != nullptr);
-  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
+  (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true, true, true);
+  // (UmPgTblMgmt::getPML4Root()+ kSlotPML4Offset)->setPte(newRoot, false, true);
 }
 
 void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
@@ -322,7 +420,7 @@ void umm::UmManager::Load(std::unique_ptr<UmInstance> umi) {
   // If we have a vaild pth root, install it.
   auto pthRoot = umi->sv_.pth.Root();
   if(pthRoot != nullptr){
-    // kprintf("Installing instance pte root.\n");
+    kprintf("Installing instance pte root.\n");
     setSlotPDPTRoot(pthRoot);
     pdptRoot = getSlotPDPTRoot();
     // kprintf("Slot root is %p\n", pdptRoot);
@@ -362,7 +460,18 @@ void umm::UmManager::runSV() {
   kassert(status() == loaded);
   kprintf(GREEN "Umm... Deploying SV on core #%d\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine());
+
+  // NOTE: We transfer to sv execution here via the breakpoint exception!!!
   trigger_bp_exception();
+  // NOTE: After Halt is called triggering it's own #BP we reload to this state.
+
+  // Cleanup execution.
+  // Clear proxy data
+  proxy->UmClearData();
+  DisableTimers();
+  delete context_;
+  context_ = nullptr;
+
 }
 
 void umm::UmManager::Halt() {
@@ -382,11 +491,6 @@ void umm::UmManager::Halt() {
   // TODO:This might be a little harsh in general, but useful for debugging.
   kprintf(GREEN "Umm... Returned from the instance on core #%d (%dms)\n" RESET,
                 (size_t)ebbrt::Cpu::GetMine(), status_.time());
-  // Clear proxy data
-  proxy->UmClearData();
-  DisableTimers();
-  delete context_;
-  context_ = nullptr;
   trigger_bp_exception();
 }
 

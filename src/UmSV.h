@@ -50,12 +50,8 @@ public:
   // Delegating constructor to default.
   explicit UmSV(uintptr_t entry) : UmSV() { SetEntry(entry); }
 
-  UmSV(const UmSV& rhs){
-    region_list_ = rhs.region_list_;
-    ef = rhs.ef;
-    pth = rhs.pth;
-    // kprintf(GREEN "Copy cons.\n" RESET);
-  }
+
+  UmSV(const UmSV& rhs);
 
   void SetEntry(uintptr_t paddr);
   void AddRegion(Region &reg);

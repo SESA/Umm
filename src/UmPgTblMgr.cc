@@ -11,8 +11,6 @@
 #include "UmManager.h"  // hack to get per core copied pages count.
 #include "UmPgTblMgr.h"
 #include "UmManager.h"
-// #include <Umm.h>
-#include <vector>
 
 #define printf kprintf
 
@@ -258,7 +256,50 @@ lin_addr UmPgTblMgmt::getPhysAddrLamb(lin_addr la, simple_pte* root, unsigned ch
 
   ret.raw = walkPageTable(root, lvl, la, leafFn);
   return ret;
+}
 
+simple_pte *UmPgTblMgmt::addrToPTELamb(lin_addr la, simple_pte* root, unsigned char lvl) {
+  simple_pte *pte;
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return (uintptr_t)curPte;
+  };
+
+  pte = (simple_pte *) walkPageTable(root, lvl, la, leafFn);
+  return pte;
+}
+
+void UmPgTblMgmt::dumpAllPTEsWalkLamb(lin_addr la, simple_pte* root,
+                                            unsigned char lvl) {
+  // prints out all PTEs relevant for walking la.
+  printf("In %s\n", __func__);
+  auto recFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> void{
+    printf("Lvl is %d\n", lvl);
+    curPte->printCommon();
+  };
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return 0;
+  };
+
+  walkPageTable(root, lvl, la, recFn, leafFn);
+}
+
+void UmPgTblMgmt::setUserAllPTEsWalkLamb(lin_addr la, simple_pte* root,
+                                      unsigned char lvl) {
+  printf("In %s\n", __func__);
+  auto recFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> void{
+    // Set user bit.
+    curPte->raw = curPte->raw | 1 << 2;
+  };
+
+  auto leafFn = [](simple_pte *curPte, lin_addr virt, uint8_t lvl) -> uintptr_t{
+    return 0;
+  };
+
+  walkPageTable(root, lvl, la, recFn, leafFn);
+  // HACK: Super overkill, but being overly conservative.
+  flushTranslationCaches();
 }
 
 uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
@@ -270,13 +311,22 @@ uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
   // Before doing anything, maybe nothing, maybe check if root is nullptr.
 
   simple_pte *curPTE = root + virt[lvl];
-  // f1();
 
   if(isLeaf(curPTE, lvl)){
     return L(curPTE, virt, lvl);
   }
   // printf("We exist, but we're not a leaf, recurse!\n");
   return walkPageTable(nextTableOrFrame(root, virt[lvl], lvl), lvl-1, virt, L);
+}
+
+uintptr_t UmPgTblMgmt::walkPageTable(simple_pte *root, uint8_t lvl,
+                                     lin_addr virt, walkRecFn R, walkLeafFn L) {
+  simple_pte *curPTE = root + virt[lvl];
+  R(curPTE, virt, lvl);
+  if(isLeaf(curPTE, lvl)){
+    return L(curPTE, virt, lvl);
+  }
+  return walkPageTable(nextTableOrFrame(root, virt[lvl], lvl), lvl-1, virt, R, L);
 }
 
 // Printer helper.
@@ -332,6 +382,11 @@ void UmPgTblMgmt::dumpFullTableAddrs(simple_pte *root, unsigned char lvl){
 void UmPgTblMgmt::dumpFullTableAddrsHelper(simple_pte *root, unsigned char lvl){
   // Dump contents of entire table.
   // Open brace.
+  if(root == nullptr){
+    kabort("Root is nullptr\n");
+  }
+
+
   alignToLvl(lvl);
   printf("%s " CYAN "@ %p" RESET "[\n", level_names[lvl], root);
 
@@ -827,6 +882,8 @@ lin_addr UmPgTblMgmt::reconstructLinAddrPgFromOffsets(uint64_t *idx){
 
 lin_addr UmPgTblMgmt::copyDirtyPage(lin_addr src, unsigned char lvl){
   auto page = ebbrt::page_allocator->Alloc();
+  // if(page == Pfn::None())
+  //   kprintf_force(RED "Ran out of pages\n" RESET);
   kbugon(page == Pfn::None());
   auto page_addr = page.ToAddr();
   memcpy((void*)page_addr, (void*)src.raw, 1UL << pgShifts[lvl]);
@@ -858,7 +915,8 @@ void simple_pte::clearPTE(){
 void simple_pte::setPte(simple_pte *tab,
                         bool dirty /*= false*/,
                         bool acc   /*= false*/,
-                        bool rw    /*= true*/){
+                        bool rw    /*= true*/,
+                        bool us    /*= false*/){
 
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
@@ -868,6 +926,7 @@ void simple_pte::setPte(simple_pte *tab,
   simple_pte pte; pte.raw = 0;
   pte.decompCommon.SEL   = 1;
   pte.decompCommon.RW    = (rw)    ? 1 : 0;
+  pte.decompCommon.US    = (us)    ? 1 : 0;
   pte.decompCommon.A     = (acc)   ? 1 : 0;
   pte.decompCommon.DIRTY = (dirty) ? 1 : 0;
 
@@ -908,15 +967,19 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
     // We're in the table, modify the entry & importantly mark it dirty.
     // TODO: Should this always be marked accessed? Def in copy dirty.
     // printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
-    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true);
+    // Mark mapping PTE user.
+    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true, true, true);
   } else {
     if (exists(pte_ptr)) {
+      // Recurse to next level
       mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
     } else {
+      // Create next level and recurse.
       simple_pte *ret =
         mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
       // Dirty bit doesn't apply, accessed does.
-      pte_ptr->setPte(ret, false, true);
+      // Mark interior PTEs user.
+      pte_ptr->setPte(ret, false, true, true, true);
     }
   }
   return root;
@@ -949,7 +1012,7 @@ simple_pte *UmPgTblMgmt::findAndSetPTECOW(simple_pte *root, simple_pte *origPte,
     // We're in the table, modify the entry & importantly mark it dirty.
     // TODO: Should this always be marked accessed? Def in copy dirty.
     // NOTE: Setting read only access.
-    pte_ptr->setPte((simple_pte *) origPte->pageTabEntToAddr(TBL_LEVEL).raw, true, true, false);
+    pte_ptr->setPte((simple_pte *) origPte->pageTabEntToAddr(TBL_LEVEL).raw, true, true, false, true); // TODO
   } else {
     if (exists(pte_ptr)) {
       findAndSetPTECOW(nextTableOrFrame(pte_ptr, 0, curLvl), origPte, virt, rootLvl, mapLvl, curLvl - 1);
@@ -957,7 +1020,7 @@ simple_pte *UmPgTblMgmt::findAndSetPTECOW(simple_pte *root, simple_pte *origPte,
       simple_pte *ret =
         findAndSetPTECOW(nullptr, origPte, virt, rootLvl, mapLvl, curLvl - 1);
       // Dirty bit doesn't apply, accessed does.
-      pte_ptr->setPte(ret, false, true);
+      pte_ptr->setPte(ret, false, true, true, true);    // TODO tu, attention
     }
   }
   return root;
@@ -1015,9 +1078,7 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyCOWHelper(simple_pte *root,
     if (isLeaf(root + i, lvl)) {
       // Higher NYI
       kassert(lvl == 1);
-      // If it's a dirty page or if we're bootstrapping (making base envt);
-      if ((root + i)->decompCommon.DIRTY || umm::manager->bootstrapping) {
-      // if ((root + i)->decompCommon.DIRTY ) {
+      if ((root + i)->decompCommon.DIRTY ) {
         // TODO(tommyu) is there a better way?
         // Reconstruct page Lin Addr.
         lin_addr virt = reconstructLinAddrPgFromOffsets(idx);

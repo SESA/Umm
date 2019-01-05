@@ -34,18 +34,26 @@ const uintptr_t kSlotEndVAddr = 0xFFFFC07FFFFFFFFF;
 const uint64_t kSlotPageLength = 0x7FFFFFF;
 const uint16_t kSlotPML4Offset = 0x180;
 
+// Use int 3 by default, this enables syscall mechanism.
+#define USE_SYSCALL
+
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>, public ebbrt::Timer::Hook {
 public:
+  UmManager();
+  uintptr_t GetKernStackPtr() const;
+  // TODO for threading, will have to move this to the umi?
+  uintptr_t fnStack;
+  uintptr_t RestoreFnStackPtr() const;
+  void SaveFnStackPtr(const uintptr_t fnStack);
+
 
 #if PERF
   Counter ctr;
 #endif
 
-  // TODO HACK XXX DELETEME:
-  bool bootstrapping = false;
   std::unique_ptr<UmInstance> umi_;
   simple_pte* getSlotPDPTRoot();
 

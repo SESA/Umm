@@ -122,8 +122,7 @@ void AppMain() {
         app_session->is_connected.Then([=](auto f) {
           ebbrt::kprintf_force("Alright, we are connected!\n");
         });
-        std::array<uint8_t, 4> umip = {{169, 254, 1, 0}};
-        app_session->Pcb().Connect(ebbrt::Ipv4Address(umip), 8080);
+        app_session->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080);
       },
       /* force_async = */ true);
   umm::manager->runSV();

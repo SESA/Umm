@@ -59,7 +59,8 @@ void singleCoreTest(){
 
   // Get snap future.
   auto snap_f = umm::manager->SetCheckpoint(
-                                            umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+                                            // umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+                                            umm::ElfLoader::GetSymbolAddress("solo5_app_main"));
 
   // Generated UM Instance from the linked in Elf
   umm::manager->Load(std::move(umi));
@@ -78,8 +79,8 @@ void AppMain() {
 
   // Initialize the UmManager
   umm::UmManager::Init();
-  twoCoreTest();
-  // singleCoreTest();
+  // twoCoreTest();
+  singleCoreTest();
 
   // ebbrt::acpi::PowerOff();
 

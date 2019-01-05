@@ -17,8 +17,10 @@
 #include <cinttypes> // PRIx64 
 
 #include <ebbrt/Clock.h>
+#include <ebbrt/Cpu.h>
 #include <ebbrt/Debug.h>
 #include <ebbrt/Future.h>
+#include <ebbrt/native/Net.h>
 #include <ebbrt/native/Idt.h>
 #include <ebbrt/native/Pfn.h>
 #include <ebbrt/native/VMem.h>
