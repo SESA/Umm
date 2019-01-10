@@ -37,7 +37,7 @@ typedef std::pair<umi::id, umi::core> exec_location; // e.g., (ID, core)
  * state of the process.
  *
  */
-class UmInstance  {
+class UmInstance : public ebbrt::Timer::Hook {
 public:
   /** Page Fault counters */
   struct PgFtCtrs {
@@ -47,6 +47,7 @@ public:
     uint64_t wrFaults = 0;
     uint64_t cowFaults = 0;
   };
+
   // IP/MAC are provided here (and not in UmProxy) to allow apps access to them
   static ebbrt::Ipv4Address CoreLocalIp() {
     size_t core = ebbrt::Cpu::GetMine();
@@ -62,7 +63,9 @@ public:
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
-//  ~UmInstance();
+  ~UmInstance(){ disable_timer(); }
+  /** Timer event handler */
+  void Fire() override;
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr, bool cow);
   /** Log PageFault to internal counter */
@@ -77,13 +80,20 @@ public:
   /* Stack Management */
   void Activate();
   void Deactivate();
+  void Block(size_t ns);
 
   /* Premption Management */
-  void EnableYield(); 
-  void DisableYield(); 
-  bool CanYield() { return yield_flag_; }
 
-  /* IO */
+  /* Return true if this instance should be yielded */
+  bool Yieldable(); 
+
+  /* Make this instance yieldable */
+  void EnableYield(); 
+
+  /* Make this instance non-yieldable */
+  void DisableYield(); 
+
+  /* IO Management */
   std::unique_ptr<ebbrt::IOBuf> ReadPacket();
   void WritePacket(std::unique_ptr<ebbrt::IOBuf>);
   bool HasData() { return (!umi_recv_queue_.empty()); };
@@ -103,16 +113,25 @@ public:
   ebbrt::Promise<UmSV *> *snap_p;
 
 private:
+  /** Timing */
+  void enable_timer(ebbrt::clock::Wall::time_point now);
+  void disable_timer(); 
+  bool timer_set = false;
+  ebbrt::clock::Wall::time_point clock_;
+  ebbrt::clock::Wall::time_point time_wait; // block until this time
+  // TODO: Computing runtime duration within the instance
+  // runtime_ += std::chrono::duration_cast<std::chrono::milliseconds>(now -
+  // clock_).count();
+
+  /* Internal state */
   std::queue<std::unique_ptr<ebbrt::IOBuf>> umi_recv_queue_;
   bool active_ = true;
   ebbrt::EventManager::EventContext *context_; // blocking context
   umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
   size_t page_count = 0; // TODO: replace with region-specific counter
   uint64_t runtime_ = 0;
-  bool yield_flag_ = false; // signal that the instance can be yielded 
-  // TODO: Computing runtime duration within the instance
-  // runtime_ += std::chrono::duration_cast<std::chrono::milliseconds>(now -
-  // clock_).count();
+  bool yield_flag_ = false;  // shows the instance can be or is yielded
+  bool resume_flag_ = false; // shows that the instance has requested to be resumed
 }; // umm::UmInstance
 }
 
