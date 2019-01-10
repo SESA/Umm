@@ -4,6 +4,7 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 #ifndef UMM_UM_MANAGER_H_
 #define UMM_UM_MANAGER_H_
+#include <deque>
 
 #include <ebbrt/Clock.h>
 #include <ebbrt/EbbId.h>
@@ -88,47 +89,46 @@ public:
   /** Signal the core to yield UMI at the next opportunity */
   void SignalYield(umm::umi::id id); 
 
+#if 0
   /** Signal the core to no longer yield UMI */
   void SignalNoYield(umm::umi::id id); 
+#endif
 
   /** Signal the core to restore a yielded instance */
   void SignalResume(umm::umi::id id);
+
+  /* An instance wants to resume */
+  bool RequestActivation(umm::umi::id);
 
   /** Timer event handler */
   void Fire() override;
 
   /** Public utility/helpter functions */
 
-  /* Returns raw pointer to the active instance */
-  UmInstance *ActiveInstance() {
-    if (active_umi_)
-      return active_umi_.get();
-    return nullptr;
-  }
+  /* Returns raw pointer to a managed instance */
+  UmInstance *GetInstance(umm::umi::id); 
 
-  /* Returns raw pointer to the instance */
-  UmInstance *GetInstance(umm::umi::id umi) {
-    if (slot_has_instance() && umi == active_umi_->Id()) 
-      return active_umi_.get();
-    auto it = inactive_umi_map_.find(umi);
-    if( it != inactive_umi_map_.end()){
-      return it->second.get();
-    }
-    // Better check that your got a valid instance... lol
-    return nullptr;
-  }
+  /* Returns raw pointer to the active instance */
+  UmInstance *ActiveInstance();
+
+  /* Returns id of the loaded instance */
+  // TODO: mark as const
+  umi::id ActiveInstanceId();
 
   /* Return slot status */ 
-  // TODO: mark these as const
+  // TODO: mark as const
   Status status() { return status_.get(); } ;
 
   /* Return instance activation queue length */
+  // TODO: mark as const
   size_t activation_queue_size() { return activation_promise_map_.size(); }
 
   /** Return true if umi::id is active on this core */
+  // TODO: mark as const
   bool is_active_instance(umm::umi::id);
   
   /** Return true is slot has an instance loaded */
+  // TODO: mark as const
   bool slot_has_instance() const { return (active_umi_) ? true : false; }
 
   /* Fault handlers */ 
@@ -158,6 +158,8 @@ private:
     ebbrt::clock::Wall::time_point clock_;
   }; // UmmStatus
 
+  /** Yield loaded instance */
+  void Yield(); 
 
   /** Slot utilities - Load/unload/swap instances, controls slot state */
 
@@ -185,7 +187,15 @@ private:
    */
   void slot_yield_instance();
 
-  void slot_queue_move_to_front(umi::id);
+  /** Slot inactive umi queue */
+  const umi::id null_umi_id = 0;
+  void slot_queue_push(umi::id);
+  bool slot_queue_move_to_front(umi::id);
+  umi::id slot_queue_pop();
+  umi::id slot_queue_pop_end();
+  bool slot_queue_remove(umi::id);
+  bool slot_queue_get_pos(umi::id, size_t*);
+  size_t slot_queue_size();
 
   // Trigger exection entry IN/OUT of the slot
 
@@ -198,7 +208,8 @@ private:
 
   /** Inactive UMIs */
   std::unordered_map<umi::id, std::unique_ptr<UmInstance>> inactive_umi_map_;
-  std::queue<umi::id> inactive_umi_queue_;
+  //std::queue<umi::id> inactive_umi_queue_;
+  std::deque<umi::id> idle_umi_queue_;
   std::unordered_map<umi::id, bool> inactive_umi_halt_map_;
 
   /** Queued Launches */
