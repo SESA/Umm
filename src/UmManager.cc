@@ -89,12 +89,6 @@ void umm::UmManager::process_gateway(ebbrt::idt::ExceptionFrame *ef){
     ef->cs = (4 << 3) | 3;
 #endif
 
-		/** Conditional stack switch */
-		/* When SV is loaded from the ELF, the init stack pointer is zero */ 
-		// TODO: Set this in the ELF loader
-    // New execution sets rsp. Redeploy doesn't.
-    if(ef->rsp == 0)
-      ef->rsp = 0xFFFFC07FFFFFFFF0;
     return;
   }
 

@@ -44,7 +44,8 @@ public:
     // Avoid GeneralProtectionException on CS register.
     ef.cs = 0x8;
 
-    // kprintf(GREEN "CONS\n" RESET);
+    // Initialize stack ptr to 16byte aligned val at end of slot.
+    ef.rsp = 0xFFFFC07FFFFFFFF0;
   }
 
   // Delegating constructor to default.
