@@ -64,8 +64,7 @@ public:
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
 //  ~UmInstance();
   /** Resolve phyical page for virtual address */
-  uintptr_t GetBackingPage(uintptr_t vaddr);
-  uintptr_t GetBackingPageCOW(uintptr_t vaddr);
+  uintptr_t GetBackingPage(uintptr_t vaddr, bool cow);
   /** Log PageFault to internal counter */
   void logFault(x86_64::PgFaultErrorCode ec);
 

@@ -116,51 +116,41 @@ void umm::UmInstance::Print() {
   sv_.Print();
 }
 
-uintptr_t umm::UmInstance::GetBackingPage(uintptr_t vaddr) {
-  auto vp_start_addr = Pfn::Down(vaddr).ToAddr();
-  umm::Region& reg = sv_.GetRegionOfAddr(vaddr);
-  reg.count++;
-
-  // TODO(jmcadden): Support large pages per-region
-  kassert(reg.page_order == 0);
+uintptr_t umm::UmInstance::GetBackingPage(uintptr_t v_pg_start, bool cow) {
+  umm::Region& reg = sv_.GetRegionOfAddr(v_pg_start);
+  {
+    reg.count++;
+    // TODO(jmcadden): Support large pages per-region
+    kassert(reg.page_order == 0);
+  }
 
   /* Allocate new physical page for the faulted region */
-  Pfn backing_page = ebbrt::page_allocator->Alloc();
-  kbugon(backing_page == Pfn::None());
-  page_count++;
-  auto bp_start_addr = backing_page.ToAddr();
+  uintptr_t bp_start_addr;
+  uintptr_t vp_start_addr;
+  {
+    Pfn backing_page = ebbrt::page_allocator->Alloc();
+    kbugon(backing_page == Pfn::None());
+    page_count++;
+
+    bp_start_addr = backing_page.ToAddr();
+    vp_start_addr = Pfn::Down(v_pg_start).ToAddr();
+  }
+
+  if(cow){
+    // Copy on write case.
+    std::memcpy((void *)bp_start_addr, (const void *)v_pg_start, kPageSize);
+    return bp_start_addr;
+  }
 
   // Check for a backing source
   if (reg.data != nullptr) {
-    unsigned char *elf_src_addr;
-    elf_src_addr = reg.data + reg.GetOffset(vp_start_addr);
+    unsigned char *elf_src_addr = reg.data + reg.GetOffset(vp_start_addr);
     // Copy backing data onto the allocated page
     std::memcpy((void *)bp_start_addr, (const void *)elf_src_addr, kPageSize);
   } else if (reg.name == ".bss") {
-    //   printf("Allocating a bss page\n");
     // Zero bss pages
     std::memset((void *)bp_start_addr, 0, kPageSize);
   }
-
-  return bp_start_addr;
-}
-
-uintptr_t umm::UmInstance::GetBackingPageCOW(uintptr_t vaddr) {
-  umm::Region& reg = sv_.GetRegionOfAddr(vaddr);
-  reg.count++;
-
-  // TODO(jmcadden): Support large pages per-region
-  kassert(reg.page_order == 0);
-
-  /* Allocate new physical page for the faulted region */
-  Pfn backing_page = ebbrt::page_allocator->Alloc();
-  kbugon(backing_page == Pfn::None());
-  page_count++;
-  auto bp_start_addr = backing_page.ToAddr();
-
-  // Copy data on that page. Remember vaddr is still old write protected page.
-  // kprintf_force(MAGENTA "Copy dst %p, src %p!\n" RESET, bp_start_addr, vaddr);
-  std::memcpy((void *)bp_start_addr, (const void *)vaddr, kPageSize);
 
   return bp_start_addr;
 }

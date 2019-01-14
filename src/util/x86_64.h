@@ -84,6 +84,17 @@ typedef struct {
             RES2 : 16 + 32;
           } __attribute__((packed));
     };
+    bool isWriteFault(){
+      if(WR == 1)
+        return true;
+      return false;
+    }
+
+    bool isPresent(){
+      if(P == 1)
+        return true;
+      return false;
+    }
   } PgFaultErrorCode;
 
 } // namespace x86_64

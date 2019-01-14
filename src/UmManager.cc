@@ -370,47 +370,35 @@ void printPTWalk(uintptr_t virt, umm::simple_pte* root, unsigned char lvl){
 }
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
-  if(status() == snapshot)
-    kassert(RED "Umm... Snapshot Pagefault!?\n" RESET);
-
+  // Pagefault
   kassert(status() != empty);
   kassert(valid_address(vaddr));
-  if(status() == snapshot)
-    kprintf_force(RED "Umm... Snapshot Pagefault\n" RESET);
+  kassert(status() != snapshot);
 
   x86_64::PgFaultErrorCode ec;
   ec.val = ef->error_code;
+
+  // Increment page fault counters. Optional.
   active_umi_->logFault(ec);
 
-  auto virtual_page = Pfn::Down(vaddr);
-  auto virtual_page_addr = virtual_page.ToAddr();
-  lin_addr virt;
-  virt.raw = virtual_page_addr;
-
-
-  /* Pass to the mounted sv to select/allocate the backing page */
-  uintptr_t physical_start_addr = 0;
-  if(ec.P == 1){
-    // kprintf_force("Copy on write a page!\n");
-    physical_start_addr = active_umi_->GetBackingPageCOW(virtual_page_addr);
-  } else{
-    physical_start_addr = active_umi_->GetBackingPage(virtual_page_addr);
+  // This allocates a page for the umi. It is filled with data in this call
+  // from one of 3 sources:
+  // 1) If this is a copy on write (determined by the PET existing) it is
+  // copied from the source.
+  // 2) If it's a page from the ELF, it's copied.
+  // 3) If it's a zeroed page not in the ELF (like BSS), it's zero filled.
+  lin_addr phys, virt;
+  {
+    virt.raw = Pfn::Down(vaddr).ToAddr();
+    phys.raw = active_umi_->GetBackingPage(virt.raw, ec.isPresent());
   }
-  kassert(physical_start_addr != 0);
 
-
-  lin_addr phys;
-  phys.raw = physical_start_addr;
-
-  simple_pte* PML4Root = UmPgTblMgmt::getPML4Root();
-  simple_pte* slotRoot = PML4Root + kSlotPML4Offset;
-
-  bool writeFault = (ec.WR) ? true : false;
-  // kprintf_force(" \(%#llx => %p)", vaddr, physical_start_addr);
-  // kprintf_force("\t\t write fault? %s, error code %x\n", ec.WR ? "yes" : "no", ec.val );
-
+  // Take that physical page and map it into the VAS creating a PT if necessary.
+  bool writeFault = ec.isWriteFault();
+  simple_pte* slotRoot = UmPgTblMgmt::getPML4Root() + kSlotPML4Offset;
+  // TODO: Maybe just if notPresent?
   if (slotRoot->raw == 0) {
-    // No existing slotRoot entry.
+    // No existing slotRoot entry. Create new page table.
     auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
                                           TBL_LEVEL, PDPT_LEVEL, writeFault);
 
@@ -425,10 +413,9 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   }
 
   // NOTE: if we're in the COW case we have to flush the translation!!!
-  if(ec.P){
+  if(ec.isPresent()){
     umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
   }
-  // printPTWalk(vaddr, UmPgTblMgmt::getPML4Root(), PML4_LEVEL);
 }
 
 umm::simple_pte* umm::UmManager::getSlotPDPTRoot(){
