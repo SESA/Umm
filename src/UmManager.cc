@@ -375,21 +375,23 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
   // Increment page fault counters. Optional.
   active_umi_->logFault(ec);
 
-  // This allocates a page for the umi. It is filled with data in this call
-  // from one of 3 sources:
-  // 1) If this is a copy on write (determined by the PET existing) it is
-  // copied from the source.
-  // 2) If it's a page from the ELF, it's copied.
-  // 3) If it's a zeroed page not in the ELF (like BSS), it's zero filled.
   lin_addr phys, virt;
   {
     virt.raw = Pfn::Down(vaddr).ToAddr();
+
+    // This allocates a page for the umi. It is filled with data in this call
+    // from one of 3 sources:
+    // 1) If this is a copy on write (determined by the PET existing) it is
+    // copied from the source.
+    // 2) If it's a page from the ELF, it's copied.
+    // 3) If it's a zeroed page not in the ELF (like BSS), it's zero filled.
     phys.raw = active_umi_->GetBackingPage(virt.raw, ec.isPresent());
   }
 
   // Take that physical page and map it into the VAS creating a PT if necessary.
   bool writeFault = ec.isWriteFault();
-  simple_pte* slotRoot = UmPgTblMgmt::getPML4Root() + kSlotPML4Offset;
+  simple_pte* slotRoot = UmPgTblMgmt::getSlotRoot();
+
   // TODO: Maybe just if notPresent?
   if (slotRoot->raw == 0) {
     // No existing slotRoot entry. Create new page table.

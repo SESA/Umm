@@ -599,6 +599,10 @@ lin_addr UmPgTblMgmt::getPhysAddrRec(lin_addr la, simple_pte* root /*=nullptr*/,
   return getPhysAddrRecHelper(la, root, lvl);
 }
 
+simple_pte* UmPgTblMgmt::getSlotRoot(){
+  return getPML4Root() + kSlotPML4Offset;
+}
+
 // TODO(tommyu): Delete me.
 simple_pte* UmPgTblMgmt::getSlotPDPTRoot(){
   // Root of slot.

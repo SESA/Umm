@@ -190,6 +190,7 @@ namespace UmPgTblMgmt {
                            unsigned char mapLvl, unsigned char curLvl, bool writeFault);
 
   // Root Getters
+  simple_pte *getSlotRoot();
   simple_pte *getSlotPDPTRoot();
   simple_pte *getPML4Root();
 
