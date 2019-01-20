@@ -24,6 +24,8 @@ typedef size_t core;
 typedef uint32_t id;
 // umi::exec_location
 typedef std::pair<umi::id, umi::core> exec_location; // e.g., (ID, core)
+
+const id null_id = 0;
 }
 
 /**

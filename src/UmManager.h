@@ -35,7 +35,7 @@ const uint16_t kSlotPML4Offset = 0x180;
 /**
  *  UmManager - MultiCore Ebb that manages per-core executions of SV instances
  */
-class UmManager : public ebbrt::MulticoreEbb<UmManager>,  public ebbrt::Timer::Hook {
+class UmManager : public ebbrt::MulticoreEbb<UmManager> {
 public:
   // int num_cp_pgs = 0;
   /** Global EbbId */
@@ -66,6 +66,11 @@ public:
    *  Returned future is complete when core is loaded
    */
   ebbrt::Future<umi::id> Load(std::unique_ptr<UmInstance>);
+
+  /** Start - Start execution of the slot 
+   *  Assumes slot is loaded with instance `id`
+   *  Returns slot in unloaded state after Halt is called
+   */
   std::unique_ptr<UmInstance> Start(umi::id);
 
   /** Run - Submit an instance for execution instance
@@ -99,9 +104,6 @@ public:
 
   /* An instance wants to resume */
   bool RequestActivation(umm::umi::id);
-
-  /** Timer event handler */
-  void Fire() override;
 
   /** Public utility/helpter functions */
 
@@ -188,7 +190,6 @@ private:
   void slot_yield_instance();
 
   /** Slot inactive umi queue */
-  const umi::id null_umi_id = 0;
   void slot_queue_push(umi::id);
   bool slot_queue_move_to_front(umi::id);
   umi::id slot_queue_pop();
@@ -220,13 +221,6 @@ private:
   std::unique_ptr<UmInstance> active_umi_;
   // Slot status
   UmmStatus status_;
-
-  /** Timing */
-  void enable_timer(ebbrt::clock::Wall::time_point now);
-  void disable_timer(); 
-  bool timer_set = false;
-  ebbrt::clock::Wall::time_point clock_;
-  ebbrt::clock::Wall::time_point time_wait; // block until this time
 
   /** Internal Methods */
   simple_pte *getSlotPML4PTE();
