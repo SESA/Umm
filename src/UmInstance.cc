@@ -13,6 +13,9 @@
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
 
+// TOGGLE DEBUG PRINT  
+#define DEBUG_PRINT_UMI  0
+
 /** XXX: Takes a virtual address and length and marks the pages USER */ 
 // TODO: Not this..
 void hackSetPgUsr(uintptr_t vaddr, int bytes){
@@ -92,8 +95,10 @@ void umm::UmInstance::Block(size_t ns){
   auto now = ebbrt::clock::Wall::Now();
   time_wait = now + std::chrono::nanoseconds(ns);
   enable_timer(now);
+#if DEBUG_PRINT_SLOT
   kprintf(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(),
                 Id(), (ns / 1000));
+#endif
   if( yield_flag_ )
   {
     umm::manager->SignalYield(Id());
@@ -106,7 +111,9 @@ void umm::UmInstance::Block(size_t ns){
 void umm::UmInstance::Activate(){
   kassert(!active_);
   kassert(context_);
-  kprintf("C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#if DEBUG_PRINT_SLOT
+  kprintf_force("C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
   active_ = true;
   ebbrt::event_manager->ActivateContext(std::move(*context_));
 }
@@ -115,20 +122,26 @@ void umm::UmInstance::Deactivate() {
   kassert(active_);
   active_ = false;
   context_ = new ebbrt::EventManager::EventContext();
-  kprintf( "C%dU%d:DWN " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#if DEBUG_PRINT_SLOT
+  kprintf_force( "C%dU%d:DWN " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
   /* Instance is about to blocked */ 
   ebbrt::event_manager->SaveContext(*context_);
   /* ... */
   /* Now we are re-activated. Check with the core to see if we can resume */
   if (umm::manager->RequestActivation(Id()) == false) {
     // We're raced between activating this instance and halting it/scheduling it out 
-    kprintf(CYAN "C%dU%d:UP? " RESET,
+#if DEBUG_PRINT_SLOT
+    kprintf_force(CYAN "C%dU%d:UP? " RESET,
             (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
     resume_flag_ = true;
     Deactivate();  // This possibly blocks forever
   }
-  kprintf( "C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(),
+#if DEBUG_PRINT_SLOT
+  kprintf_force( "C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(),
           Id());
+#endif
   resume_flag_ = false;
   kbugon(umm::manager->ActiveInstanceId() != Id());
 }
@@ -137,9 +150,9 @@ bool umm::UmInstance::Yieldable() { return (yield_flag_ && !resume_flag_); }
 
 void umm::UmInstance::EnableYield() {
   if(!yield_flag_){
-    // kprintf("C(%d),U(%d): yield enabled\n", (size_t)ebbrt::Cpu::GetMine(),
-    // active_umi_->Id());
-    kprintf(CYAN "C%dU%d:YON " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#if DEBUG_PRINT_SLOT
+    kprintf_force(CYAN "C%dU%d:YON " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
     yield_flag_ = true;
   }
   //XXX: what about resume_flag_?
@@ -147,7 +160,9 @@ void umm::UmInstance::EnableYield() {
 
 void umm::UmInstance::DisableYield() {
   if(yield_flag_){
-    kprintf(CYAN "C%dU%d:YOFF " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#if DEBUG_PRINT_SLOT
+    kprintf_force(CYAN "C%dU%d:YOFF " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
     yield_flag_ = false;
   }
 }
@@ -173,7 +188,9 @@ void umm::UmInstance::disable_timer() {
 void umm::UmInstance::Fire() {
   kassert(timer_set);
   timer_set = false;
-  kprintf(YELLOW "U%d:F " RESET, Id());
+#if DEBUG_PRINT_SLOT
+  kprintf_force(YELLOW "U%d:F " RESET, Id());
+#endif
   auto now = ebbrt::clock::Wall::Now();
   // If we reached the time_blocked period then unblock the execution
   if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
@@ -186,7 +203,7 @@ void umm::UmInstance::Fire() {
 }
 
 void umm::UmInstance::Print() {
-  kprintf("Number of pages allocated: %d\n", page_count);
+  kprintf_force("Number of pages allocated: %d\n", page_count);
   sv_.Print();
 }
 
