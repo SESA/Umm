@@ -54,9 +54,7 @@ public:
 
   /* Allocate and register a new port for this Um Instance */
   uint16_t SetupExternalPortMapping(umi::id, uint16_t);
-  void SetupInternalPortMapping(umi::id, uint16_t);
   internal_port_t ExternalPortLookup(external_port_t);
-  umi::id InternalPortLookup(uint16_t);
 	/* Free the associated ports of umi */
 	void FreePorts(umi::id);
 
@@ -65,14 +63,13 @@ private:
   void free_port(uint16_t);
   LoopbackDriver &lo;
   ebbrt::SpinLock port_lock_;
-  ebbrt::SpinLock host_map_lock_;
+  ebbrt::SpinLock nat_map_lock_;
 
   /** NAT state */
-  port_set_t port_set_; /* set of allocatable ports */
+  port_set_t port_set_;        /* set of allocatable ports */
   port_map_t master_port_map_; /* map of allocated ports */
-  port_owner_map_t port_owner_map_; /* map of allocated ports */
-  
-  std::unordered_map<uint16_t, umi::id> host_src_port_map_;
+  // TODO: Map owners, enable free/reuse or ports
+  //port_owner_map_t port_owner_map_; /* map of port owners */
 
   friend class UmProxy;
 };
@@ -162,13 +159,19 @@ private:
   bool internal_destination(std::unique_ptr<ebbrt::MutIOBuf> &);
   /* Return true if source is (host) internal */
   bool internal_source(std::unique_ptr<ebbrt::MutIOBuf> &);
-  /* Return internal port identifier for this core/umi */
+  /* Check the local cache, else make call to root*/
+  umi::id internal_port_lookup(uint16_t);
+  internal_port_t external_portmap_lookup(external_port_t);
+  void register_internal_port(umi::id, uint16_t);
+
 
   /* Instance IO state */
   umm::umi::id umi_id_;
 
   ProxyRoot &root_;
   port_map_t port_map_cache_; /* core-local port map cache */
+  // TODO: make host_src cache a bimap so that ports can be freed & reused
+  std::unordered_map<uint16_t, umi::id> host_src_port_map_cache_;
 };
 
 constexpr auto proxy = ebbrt::EbbRef<UmProxy>(UmProxy::global_id);

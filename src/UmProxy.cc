@@ -11,9 +11,9 @@
 #include "UmManager.h"
 #include "umm-internal.h"
 
-// DEBUG NETWORK IO 
+// TOGGLE DEBUG PRINT  
 #define DEBUG_PRINT_IO  0
-// protocols to display
+// protocol-specific toggles 
 #define DEBUG_PRINT_ETH 0
 #define DEBUG_PRINT_ARP 0
 #define DEBUG_PRINT_IP  0
@@ -27,37 +27,9 @@ void umm::UmProxy::Init() {
   Create(proxy_root, UmProxy::global_id);
 }
 
-umm::umi::id umm::ProxyRoot::InternalPortLookup(uint16_t src_port){
-  std::lock_guard<ebbrt::SpinLock> guard(host_map_lock_);
-  auto it = host_src_port_map_.find(src_port);
-  // We should not already find a mapping
-  if(it == host_src_port_map_.end()){
-    kprintf_force(RED "ProxyRoot: ERROR no match for internal src_port= %u \n", src_port);
-    kabort();
-  }
-  return it->second;
-}
-
-void umm::ProxyRoot::SetupInternalPortMapping(umi::id id, uint16_t src_port) {
-  std::lock_guard<ebbrt::SpinLock> guard(host_map_lock_);
-  auto it = host_src_port_map_.find(src_port);
-  if(it != host_src_port_map_.end()){
-    // We should not already find a mapping
-    if( id != it->second ){
-      kprintf_force(RED "ProxyRoot: ERROR on mapping internal src_port=%u for "
-                        "UMI #%d, conflict with UMI #%d \n",
-                    src_port, id, it->second);
-      kabort();
-    }
-  }
-#if DEBUG_PRINT_IO
-  kprintf_force(CYAN "C%dU%d:NAT_IPORT=%u " RESET, (size_t)ebbrt::Cpu::GetMine(), id, src_port);
-#endif
-   host_src_port_map_.emplace(src_port, id);
-   return;
-}
-
 umm::internal_port_t umm::ProxyRoot::ExternalPortLookup(external_port_t nport){
+  std::lock_guard<ebbrt::SpinLock> guard(nat_map_lock_);
+  //kprintf_force(CYAN "C%d:EP=%u " RESET, (size_t)ebbrt::Cpu::GetMine(), nport);
   port_map_left_iterator_t it = master_port_map_.left.find(nport);
   if (it != master_port_map_.left.end()) {
     // Hit
@@ -69,28 +41,21 @@ umm::internal_port_t umm::ProxyRoot::ExternalPortLookup(external_port_t nport){
 }
 
 uint16_t umm::ProxyRoot::SetupExternalPortMapping(umi::id id, uint16_t port) {
+  std::lock_guard<ebbrt::SpinLock> guard(nat_map_lock_);
   auto iport = umm::UmProxy::internal_port(port, id);
   port_map_right_iterator_t it = master_port_map_.right.find(iport);
   if (it != master_port_map_.right.end()) {
     return it->second;
   }
   auto nport = allocate_port();
-  port_owner_map_.emplace(id, nport);
   master_port_map_.insert(port_map_t::value_type(nport, iport));
 #if DEBUG_PRINT_IO
-  kprintf_force(CYAN "C%dU%d:NAT_XPORT=%u " RESET, std::get<1>(iport), std::get<0>(iport), nport);
+  kprintf(CYAN "C%dU%d:NAT_XPORT=%u " RESET, std::get<1>(iport), std::get<0>(iport), nport);
 #endif
   return nport;
 }
 
 void umm::ProxyRoot::FreePorts(umi::id id){
-  // XXX: Figure out how a multimap works
-  //auto its = port_owner_map_.equal_range(id);
-  //for (auto it = its.first; it != its.second; ++it) {
-  //  kprintf("Freeing port %u\n", it->second);
-  //  free_port(it->second);
-  //}
-  //port_owner_map_.erase(id);
   return;
 }
 
@@ -113,6 +78,53 @@ void umm::ProxyRoot::free_port(uint16_t val) {
   // succession. By not freeing used ports we guarantee a unique port each time
 
   /* port_set_ += val; // Free the port */
+}
+
+void umm::UmProxy::register_internal_port(umi::id id, uint16_t src_port) {
+  auto it = host_src_port_map_cache_.find(src_port);
+  if(it != host_src_port_map_cache_.end()){
+    if( id != it->second ){
+      kprintf_force(RED "ProxyRoot: ERROR conflict on mapping internal src_port=%u for "
+                        "UMI #%d, conflict with UMI #%d \n", src_port, id, it->second);
+      kabort();
+    }
+  }
+#if DEBUG_PRINT_IO
+  kprintf_force(CYAN "C%dU%d:NAT_IPORT=%u " RESET, (size_t)ebbrt::Cpu::GetMine(), id, src_port);
+#endif
+   host_src_port_map_cache_.emplace(src_port, id);
+   return;
+}
+
+umm::umi::id umm::UmProxy::internal_port_lookup(uint16_t host_src_port){
+  /* check core-local cache */
+  auto it = host_src_port_map_cache_.find(host_src_port);
+  if (it == host_src_port_map_cache_.end()) {
+    kprintf(YELLOW
+                  "ProxyRoot: WARNING no mapping found for host src port %u\n",
+                  host_src_port);
+    return umi::null_id; 
+  }
+  return it->second;
+  //host_src_port_map_cache_.emplace(host_src_port, umi_id);
+  //return umi_id;
+}
+
+umm::internal_port_t umm::UmProxy::external_portmap_lookup(external_port_t nport) {
+  /* check core-local cache */
+  auto it = port_map_cache_.left.find(nport);
+  if (it != port_map_cache_.left.end()){
+    // Cache Hit
+    return it->second;
+  } else {
+    // Cache Miss, get the mapping from the root
+    auto mapping = root_.ExternalPortLookup(nport);
+    kassert(mapping != null_port_mapping_);
+    //if(umi_id_ == std::get<0>(mapping)){
+    port_map_cache_.insert(port_map_t::value_type(nport, mapping));
+    //}
+    return mapping;
+  }
 }
 
 bool umm::UmProxy::internal_source(std::unique_ptr<ebbrt::MutIOBuf>& buf){
@@ -326,9 +338,9 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
       auto host_src_port = ebbrt::ntohs(tcp.src_port);
       if (tcp.Flags() & ebbrt::kTcpSyn) {
         // Setup a new mapping for internal TCP connection
-        root_.SetupInternalPortMapping(target_umi, host_src_port);
+        register_internal_port(target_umi, host_src_port);
       } else {
-        target_umi = root_.InternalPortLookup(host_src_port);
+        target_umi = internal_port_lookup(host_src_port);
       }
     } // end internal TCP
   } else { // If source is external
@@ -348,7 +360,8 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
                          sizeof(ebbrt::EthernetHeader);
 
       auto nport = ebbrt::ntohs(tcp.dst_port);
-      auto mapping = root_.ExternalPortLookup(nport);
+      auto mapping = external_portmap_lookup(nport);
+      kassert(mapping != null_port_mapping_);
       target_umi = std::get<0>(mapping);
       auto target_cpu = std::get<1>(mapping);
 
@@ -399,6 +412,7 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
           umi_ref->DisableYield();
           umm::manager->SignalResume(target_umi);
         }
+
       } // End external TCP processing
     }   // End if external
 
@@ -446,6 +460,9 @@ post_masq:
             (size_t)ebbrt::Cpu::GetMine(), target_umi);
     return;
   }
+  // XXX: Signal instance to resume for EVERY new message
+  // TODO: We may want to do something smarter here...
+  umm::manager->SignalResume(target_umi);
 
   /* Convert back to read-only buffer */
   buf = std::unique_ptr<ebbrt::IOBuf>(
@@ -491,12 +508,12 @@ void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
       }
       auto tcp = dp.Get<ebbrt::TcpHeader>();
       auto host_dst_port = ebbrt::ntohs(tcp.dst_port);
-      target_umi = root_.InternalPortLookup(host_dst_port);
+      target_umi = internal_port_lookup(host_dst_port);
+      if( target_umi == umi::null_id) // no match
+        return;
       auto umi_ref = umm::manager->GetInstance(target_umi);
       if (!umi_ref) {
-        kprintf(RED "ERROR! Core %u sending packet for halted/nonexistant "
-                    "UMI #%u. DROPPING...\n" RESET,
-                (size_t)ebbrt::Cpu::GetMine(), target_umi);
+        // sending packet for halted/nonexistant UMI... dropping 
         return;
       }
     }
@@ -566,13 +583,17 @@ void umm::UmProxy::SetActiveInstance(umm::umi::id id) {
   kbugon(umi_id_ == id);
   // clear the mapping cache
   umi_id_ = id; // set active instance 
-  port_map_cache_.clear();
+  //port_map_cache_.clear();
 }
 
 void umm::UmProxy::RemoveInstanceState(umm::umi::id id) {
+#if DEBUG_PRINT_IO
+  kprintf("\nC%luU%d:NAT_CLR ",
+                       (size_t)ebbrt::Cpu::GetMine(),id);
+#endif
   if (umi_id_ == id) {
     umi_id_ = 0; // We no longer have an active instance
-    port_map_cache_.clear();
+    //port_map_cache_.clear();
   }
   root_.FreePorts(id);
 }
@@ -580,25 +601,10 @@ void umm::UmProxy::RemoveInstanceState(umm::umi::id id) {
 
 uint16_t umm::UmProxy::swizzle_port_in(uint16_t nport) {
   /* search in the core local cache */
-  auto it = port_map_cache_.left.find(nport);
-  if (it != port_map_cache_.left.end()){
-    // Cache Hit
-    auto iport = std::get<2>(it->second);
-    //kprintf("Swizzle port IN %u->%u\n", nport,iport );
-    return iport; 
-  } else {
-    // Miss, get the mapping from the root
-    auto mapping = root_.ExternalPortLookup(nport);
-    kassert(mapping != null_port_mapping_);
-    //umm::umi::core umi = std::get<0>(it->second);
-    //umm::umi::id core = std::get<1>(it->second);
-    auto iport = std::get<2>(mapping);
-    if(umi_id_ == std::get<0>(mapping)){
-      port_map_cache_.insert(
-          port_map_t::value_type(nport, internal_port(iport, umi_id_)));
-    }
-    return iport;
-  }
+  auto mapping = external_portmap_lookup(nport);
+  kassert(mapping != null_port_mapping_);
+  auto iport = std::get<2>(mapping);
+  return iport;
 }
 
 uint16_t umm::UmProxy::swizzle_port_out(uint16_t iport) {
@@ -606,11 +612,10 @@ uint16_t umm::UmProxy::swizzle_port_out(uint16_t iport) {
   /* search in the core-local cache for a match */
   auto it = port_map_cache_.right.find(internal_port(iport, umi_id_));
   if (it != port_map_cache_.right.end()) {
-    // Hit
-    //kprintf("Swizzle port OUT %u->%u\n", iport, it->second);
+    // Cache Hit
     ret = it->second;
   } else {
-    // Miss, get a NAT port from the root
+    // Cache Miss, get a NAT port from the root
     auto nport = root_.SetupExternalPortMapping(umi_id_, iport);
     port_map_cache_.insert(port_map_t::value_type(nport, internal_port(iport, umi_id_)));
     ret = nport;
