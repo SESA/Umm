@@ -84,9 +84,13 @@ public:
   void Deactivate();
   void Block(size_t ns);
 
-  /* Premption Management */
+  /* Preemption Management */
 
-  /* Return true if this instance should be yielded */
+  /* Return true if this instance can be preempted, false otherwise 
+    A preemptable instance... 
+      1. If active, will be yielded on next request
+      2. If idle, will not be scheduled back in
+  */
   bool Yieldable(); 
 
   /* Make this instance yieldable */
@@ -100,6 +104,9 @@ public:
   void WritePacket(std::unique_ptr<ebbrt::IOBuf>);
   bool HasData() { return (!umi_recv_queue_.empty()); };
 
+  /** Register instance as destination for internal src port */
+  void RegisterPort(uint16_t port); 
+
   /* Dump state of the Instance */
   void Print();
   umi::id Id(){ return id_; }
@@ -110,6 +117,8 @@ public:
   PgFtCtrs pfc; // Page fault counters
   ExceptionFrame caller_restore_frame_; 
   uintptr_t fnStack;
+  /* IO state */
+  std::vector<uint16_t> src_ports_;
   /** Snapshot */
   uintptr_t snap_addr = 0; // TODO: Multiple snap locations
   ebbrt::Promise<UmSV *> *snap_p;

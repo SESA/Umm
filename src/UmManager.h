@@ -63,7 +63,7 @@ public:
   ebbrt::Future<umi::id> Load(std::unique_ptr<UmInstance>);
 
   /** Start - Start execution of the slot 
-   *  Assumes slot is loaded with instance `id`
+   *  Requires that slot is currently loaded with instance `id`
    *  Returns slot in unloaded state after Halt is called
    */
   std::unique_ptr<UmInstance> Start(umi::id);
@@ -87,12 +87,7 @@ public:
   void SignalHalt(umm::umi::id id); 
 
   /** Signal the core to yield UMI at the next opportunity */
-  void SignalYield(umm::umi::id id); 
-
-#if 0
-  /** Signal the core to no longer yield UMI */
-  void SignalNoYield(umm::umi::id id); 
-#endif
+  void SignalYield(umm::umi::id id);
 
   /** Signal the core to restore a yielded instance */
   void SignalResume(umm::umi::id id);

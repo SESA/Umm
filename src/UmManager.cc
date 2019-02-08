@@ -163,9 +163,8 @@ void umm::UmManager::SignalHalt(umm::umi::id umi) {
               active_umi_->Id());
 #endif
     slot_queue_move_to_front(umi);
-    // TODO: Activate instance?
-    // If the core is idle and that idle instance can yield, activate this instance and halt it
     inactive_umi_halt_map_.emplace(umi, true);
+    Yield(); 
   }
 }
 
@@ -343,13 +342,13 @@ void umm::UmManager::Yield(){
       next_umi_id = umi->Id();
       break;
     }
-    kprintf(YELLOW "Skip yield to U%d\n" RESET, *it);
+    //kprintf(YELLOW "Skip yield to U%d\n" RESET, *it);
   }
   if (next_umi_id == umi::null_id) {
-    kprintf(RED "NO yield target available \n" RESET);
+    //kprintf(RED "NO yield target available \n" RESET);
     return;
   }
-  kprintf(GREEN "Ok yield to U%d\n" RESET, next_umi_id);
+  //kprintf(GREEN "Ok yield to U%d\n" RESET, next_umi_id);
 
   // Grab the instance from the queue
   auto it = inactive_umi_map_.find(next_umi_id);

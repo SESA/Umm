@@ -80,7 +80,7 @@ void umm::ProxyRoot::free_port(uint16_t val) {
   /* port_set_ += val; // Free the port */
 }
 
-void umm::UmProxy::register_internal_port(umi::id id, uint16_t src_port) {
+void umm::UmProxy::RegisterInternalPort(umi::id id, uint16_t src_port) {
   auto it = host_src_port_map_cache_.find(src_port);
   if(it != host_src_port_map_cache_.end()){
     if( id != it->second ){
@@ -337,8 +337,21 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
       // Confirm the destination instance for this packet 
       auto host_src_port = ebbrt::ntohs(tcp.src_port);
       if (tcp.Flags() & ebbrt::kTcpSyn) {
-        // Setup a new mapping for internal TCP connection
-        register_internal_port(target_umi, host_src_port);
+        auto tmp_target = internal_port_lookup(host_src_port);
+        if (tmp_target) {
+          target_umi = tmp_target;
+        } else {
+          if (target_umi) {
+            // Setup a new mapping for internal TCP connection to the active instance
+            kprintf(YELLOW "C%lu:NAT_IN(->umi): WARNING implicit assignment of "
+                           "src port %d to UMI%u\n" RESET,
+                    (size_t)ebbrt::Cpu::GetMine(), host_src_port, target_umi);
+            RegisterInternalPort(target_umi, host_src_port);
+          }else{
+            kprintf(YELLOW "C%lu:NAT_IN(->umi): WARNING TCP_SYN but no loaded instance!\n");
+            return;
+          }
+        }
       } else {
         target_umi = internal_port_lookup(host_src_port);
       }
