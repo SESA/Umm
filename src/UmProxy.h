@@ -140,6 +140,9 @@ public:
 
   /** RemoveInstanceState - Clears all proxy state for a given instance */
   void RemoveInstanceState(umm::umi::id id); 
+
+  /** RegisterInternalPort - */
+  void RegisterInternalPort(umm::umi::id id, uint16_t); 
   
 
 private:
@@ -162,7 +165,6 @@ private:
   /* Check the local cache, else make call to root*/
   umi::id internal_port_lookup(uint16_t);
   internal_port_t external_portmap_lookup(external_port_t);
-  void register_internal_port(umi::id, uint16_t);
 
 
   /* Instance IO state */

@@ -8,6 +8,7 @@
 #include "util/x86_64.h"
 #include "UmInstance.h"
 #include "UmManager.h"
+#include "UmProxy.h"
 #include "umm-internal.h"
 
 #include "UmPgTblMgr.h" // User page HACK XXX
@@ -72,6 +73,11 @@ ebbrt::Future<umm::UmSV*> umm::UmInstance::SetCheckpoint(uintptr_t vaddr){
   return snap_p->GetFuture();
 }
 
+void umm::UmInstance::RegisterPort(uint16_t port){
+   umm::proxy->RegisterInternalPort(Id(), port);
+   src_ports_.emplace_back(port); 
+}
+
 void umm::UmInstance::WritePacket(std::unique_ptr<ebbrt::IOBuf> buf){
   umi_recv_queue_.emplace(std::move(buf));
 }
@@ -96,7 +102,7 @@ void umm::UmInstance::Block(size_t ns){
   auto now = ebbrt::clock::Wall::Now();
   time_wait = now + std::chrono::nanoseconds(ns);
   enable_timer(now);
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
   kprintf(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(),
                 Id(), (ns / 1000));
 #endif
@@ -112,7 +118,7 @@ void umm::UmInstance::Block(size_t ns){
 void umm::UmInstance::Activate(){
   kassert(!active_);
   kassert(context_);
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
   kprintf_force("C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
   active_ = true;
@@ -123,7 +129,7 @@ void umm::UmInstance::Deactivate() {
   kassert(active_);
   active_ = false;
   context_ = new ebbrt::EventManager::EventContext();
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
   kprintf_force( "C%dU%d:DWN " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
   /* Instance is about to blocked */ 
@@ -132,14 +138,14 @@ void umm::UmInstance::Deactivate() {
   /* Now we are re-activated. Check with the core to see if we can resume */
   if (umm::manager->RequestActivation(Id()) == false) {
     // We're raced between activating this instance and halting it/scheduling it out 
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
     kprintf_force(CYAN "C%dU%d:UP? " RESET,
             (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
     resume_flag_ = true;
     Deactivate();  // This possibly blocks forever
   }
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
   kprintf_force( "C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(),
           Id());
 #endif
@@ -151,7 +157,7 @@ bool umm::UmInstance::Yieldable() { return (yield_flag_ && !resume_flag_); }
 
 void umm::UmInstance::EnableYield() {
   if(!yield_flag_){
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
     kprintf_force(CYAN "C%dU%d:YON " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
     yield_flag_ = true;
@@ -161,7 +167,7 @@ void umm::UmInstance::EnableYield() {
 
 void umm::UmInstance::DisableYield() {
   if(yield_flag_){
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
     kprintf_force(CYAN "C%dU%d:YOFF " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
     yield_flag_ = false;
@@ -189,7 +195,7 @@ void umm::UmInstance::disable_timer() {
 void umm::UmInstance::Fire() {
   kassert(timer_set);
   timer_set = false;
-#if DEBUG_PRINT_SLOT
+#if DEBUG_PRINT_UMI
   kprintf_force(YELLOW "U%d:F " RESET, Id());
 #endif
   auto now = ebbrt::clock::Wall::Now();
