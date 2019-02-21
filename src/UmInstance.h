@@ -7,12 +7,12 @@
 
 #include <ebbrt/Timer.h>
 
+#include "Counter.h"
+
 #include "umm-common.h"
 #include "util/x86_64.h"
 
 #include "UmSV.h"
-
-#include <unordered_map>
 
 namespace umm {
 
@@ -62,7 +62,6 @@ public:
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
-//  ~UmInstance();
   /** Resolve phyical page for virtual address */
   uintptr_t GetBackingPage(uintptr_t vaddr, bool cow);
   /** Log PageFault to internal counter */

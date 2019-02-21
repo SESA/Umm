@@ -13,11 +13,12 @@
 #include <ebbrt/Debug.h>
 
 #include "../ext/solo5/kernel/ebbrt/ukvm_guest.h"
+// TU profiling.
+const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/myapp.js"})";
 
 // HACK(jmcadden): A const string in a header is a pretty bad way to specify boot arguments :( 
-const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
- "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
-// const std::string opts_ = "";
+// const std::string opts_ = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
+// "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
 
 #define SOLO5_USR_REGION_SIZE 1 << 28
 #define SOLO5_CPU_TSC_FREQ 2599997000
@@ -36,7 +37,7 @@ void solo5_hypercall_netwrite(volatile void *arg);
 static void solo5_hypercall_halt(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_halt *)arg;
   (void)arg_;
-  ebbrt::kprintf_force("\nHalting Solo5. Goodbye!\n");
+  // ebbrt::kprintf_force("\nHalting Solo5. Goodbye!\n");
   umm::manager->Halt();
 }
 

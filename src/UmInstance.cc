@@ -92,9 +92,9 @@ void umm::UmInstance::Deactivate() {
   kassert(active_);
   active_ = false;
   context_ = new ebbrt::EventManager::EventContext();
-  kprintf(YELLOW "%u" RESET, id_);
+  // kprintf(YELLOW "%u" RESET, id_);
   ebbrt::event_manager->SaveContext(*context_);
-  kprintf(GREEN "%u" RESET, id_);
+  // kprintf(GREEN "%u" RESET, id_);
 }
 
 void umm::UmInstance::EnableYield() {

@@ -18,6 +18,7 @@
 #include "UmPgTblMgr.h"
 #include "UmSV.h"
 #include "umm-common.h"
+#include "Counter.h"
 
 namespace umm {
 
@@ -35,6 +36,7 @@ const uint16_t kSlotPML4Offset = 0x180;
  */
 class UmManager : public ebbrt::MulticoreEbb<UmManager>,  public ebbrt::Timer::Hook {
 public:
+  // int num_cp_pgs = 0;
   /** Global EbbId */
   static const ebbrt::EbbId global_id = ebbrt::GenerateStaticEbbId("UmManager");
 
@@ -47,6 +49,9 @@ public:
 
   /** Class-wide static Ebb initialization */
   static void Init(); 
+  umm::count::Counter ctr;
+  // List of recorded durations.
+  std::list<count::Counter::TimeRecord> ctr_list;
 
   /** Slot status values*/
   enum Status : uint8_t { empty = 0, loaded, active, snapshot, idle, halting, finished };

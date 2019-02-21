@@ -14,6 +14,7 @@ RUMP_SOLO5_UKVM=$(RUMP_SOLO5_X86_64)/rumprun-solo5/libsolo5_ukvm.a
 RUMPRUN_CC= $(RUMP_DIR)/rumprun-solo5/bin/x86_64-rumprun-netbsd-gcc
 RUMPRUN_CXX= $(RUMP_DIR)/rumprun-solo5/bin/x86_64-rumprun-netbsd-g++
 RUMPRUN_CFLAGS =-Wall -Werror -Wmissing-prototypes -Wstrict-prototypes -g
+RUMPRUN_CXXFLAGS =-Wall -Werror -g
 RUMPRUN_LDLIBS= -lrumprun_tester
 
 # rumprun-packages

@@ -1,5 +1,6 @@
 # Shared Mmakefile for specifying different Umm targets
 
+# TODO: Think this is technically a bug, happens to work because included by a dir 2 down.
 -include ../../Makefile.common
 -include $(EXTDIR)/Makefile
 
@@ -12,6 +13,9 @@ TARGET ?= nodejsAction # Default target
 
 # RUMP TARGETS 
 RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
+RUMPNOP=$(RUMP_DIR)/tests/nop/nop.c
+RUMPSIMPLEHELLOER=$(RUMP_DIR)/tests/hello/simplehello.c
+RUMPHELLOERPP=$(RUMP_DIR)/tests/hello/hellopp.cc
 
 # nodejsAction
 NODEJSACTIONDIR ?= $(EXT_PATH)/incubator-openwhisk-runtime-nodejs/core
@@ -27,8 +31,26 @@ $(NODEJSACTIONFS): $(NODEJSACTIONMODULES)
 nodejsAction: $(NODEJSACTIONFS) $(NODEJS_BIN)
 	$(RUMP_BAKE) -m "add $(NODEJSACTIONFS)" solo5_ukvm_net target $(NODEJS_BIN)
 
+# C helloer with a 1 sec wait.
 rump-hello: rumprun 
 	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPHELLOER) -o $< $(RUMPRUN_LDLIBS)
+	$(RUMP_BAKE) solo5_ukvm_net target $< 
+	$(RM) $<
+
+rump-nop: rumprun 
+	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPNOP) -o $< $(RUMPRUN_LDLIBS)
+	$(RUMP_BAKE) solo5_ukvm_net target $< 
+	$(RM) $<
+
+# C helloer with no wait.
+rump-simple-hello: rumprun 
+	$(RUMPRUN_CC) $(RUMPRUN_CFLAGS) $(RUMPSIMPLEHELLOER) -o $< $(RUMPRUN_LDLIBS)
+	$(RUMP_BAKE) solo5_ukvm_net target $< 
+	$(RM) $<
+
+# C++ helloer.
+rump-hellopp: rumprun 
+	$(RUMPRUN_CXX) $(RUMPRUN_CXXFLAGS) $(RUMPHELLOERPP) -o $< $(RUMPRUN_LDLIBS)
 	$(RUMP_BAKE) solo5_ukvm_net target $< 
 	$(RM) $<
 
@@ -52,6 +74,9 @@ solo5-globals: $(SOLO5_OBJ) # Success
 solo5-hello: $(SOLO5_OBJ) # Success
 	$(INSTALL) -m 664 -D $(SOLO5_HW) target
 
+solo5-nop: $(SOLO5_OBJ) # Success
+	$(INSTALL) -m 664 -D $(SOLO5_NOP) target
+
 solo5-ping: $(SOLO5_OBJ) # Failed - command line error 
 	$(INSTALL) -m 664 -D $(SOLO5_PING) target
 
@@ -66,6 +91,7 @@ SOLO5_BLK ?= $(SOLO5_DIR)/tests/test_blk/test_blk.ebbrt
 SOLO5_EXC ?= $(SOLO5_DIR)/tests/test_exception/test_exception.ebbrt
 SOLO5_GLB ?= $(SOLO5_DIR)/tests/test_globals/test_globals.ebbrt
 SOLO5_HW ?= $(SOLO5_DIR)/tests/test_hello/test_hello.ebbrt
+SOLO5_NOP ?= $(SOLO5_DIR)/tests/test_nop/test_nop.ebbrt
 SOLO5_PING ?= $(SOLO5_DIR)/tests/test_ping_serve/test_ping_serve.ebbrt
 SOLO5_QUIET ?= $(SOLO5_DIR)/tests/test_quiet/test_quiet.ebbrt
 SOLO5_TIME ?= $(SOLO5_DIR)/tests/test_time/test_time.ebbrt

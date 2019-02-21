@@ -40,6 +40,8 @@ umm::UmManager::UmManager(){
   // init syscall extensions and MSRs.
   umm::syscall::enableSyscallSysret();
 #endif
+  // Cycle, ins, and ref ctrs.
+  ctr.init_ctrs();
 }
 
 extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
@@ -47,7 +49,9 @@ extern "C" void ebbrt::idt::DebugException(ExceptionFrame* ef) {
   // Set resume flag to prevent infinite retriggering of exception
   ef->rflags |= 1 << 16;
 
+  auto check_rec = umm::manager->ctr.CreateTimeRecord(std::string("Check"));
   umm::manager->process_checkpoint(ef);
+  umm::manager->ctr.add_to_list(umm::manager->ctr_list, check_rec);
 }
 
 extern "C" void ebbrt::idt::BreakpointException(ExceptionFrame* ef) {
@@ -501,7 +505,6 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::slot_unload_instance() {
   simple_pte *slotPML4Ent = getSlotPML4PTE();
   kassert(UmPgTblMgmt::exists(slotPML4Ent));
   slotPML4Ent->clearPTE();
-  // TODO, make sure page table is g2g or reaped.
 
   // Modified page table, invalidate caches. This is confirmed to matter in virtualization.
   UmPgTblMgmt::flushTranslationCaches();
@@ -554,6 +557,9 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Start(umm::umi::id umi_id) {
 
 std::unique_ptr<umm::UmInstance>
 umm::UmManager::Run(std::unique_ptr<umm::UmInstance> umi) {
+
+  auto run_time_record = umm::manager->ctr.CreateTimeRecord(std::string("Run"));
+
   auto umi_id = umi->Id();
   if (status() == empty) {
     slot_load_instance(std::move(umi));
@@ -575,8 +581,12 @@ umm::UmManager::Run(std::unique_ptr<umm::UmInstance> umi) {
   kassert(umi_id == active_umi_->Id());
   kprintf(GREEN "Umm... Run UMI %d on core #%d\n" RESET, umi_id,
           (size_t)ebbrt::Cpu::GetMine());
+
   trigger_bp_exception();
+
   // Return here after Halt is called
+  umm::manager->ctr.add_to_list(umm::manager->ctr_list, run_time_record);
+
   return slot_unload_instance(); // Assume the umi remains loaded
 }
 
@@ -668,11 +678,11 @@ void umm::UmManager::set_snapshot(uintptr_t vaddr) {
     }
 
     if (!ns) {
-      kprintf(RED "0" RESET);
+      // kprintf(RED "0" RESET);
       return;
     }
 
-    kprintf(RED "B" RESET);
+    // kprintf(RED "B" RESET);
 
     // Enter idle state
     set_status(idle);
@@ -701,6 +711,9 @@ void umm::UmManager::set_snapshot(uintptr_t vaddr) {
   }
 
   void umm::UmManager::Halt() {
+    // kprintf_force(CYAN "In halt, pth root is %p\n" RESET,
+    //               active_umi_->sv_.pth.Root());
+
     kbugon(status() == empty);
     active_umi_->DisableYield();
     disable_timer();

@@ -1097,6 +1097,7 @@ simple_pte *UmPgTblMgmt::walkPgTblCopyDirtyCOWHelper(simple_pte *root,
           // Copy onto new page.
           lin_addr phys = copyDirtyPage(backing, lvl);
 
+          // umm::manager->num_cp_pgs++;
 
           // Super useful
           // kprintf_force(GREEN "C" RESET);

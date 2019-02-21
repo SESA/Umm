@@ -8,7 +8,7 @@
 #include "umm-common.h"
 #include "UmPgTblMgr.h"
 
-#define PTH_PERF 0
+#define PTH_CTRS 0
 
 namespace umm {
 
