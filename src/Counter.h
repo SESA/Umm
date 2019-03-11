@@ -14,6 +14,7 @@ class Counter {
 public:
   class TimeRecord {
   public:
+    TimeRecord(){};
     TimeRecord(std::string s, uint64_t cyc, uint64_t ins, uint64_t ref)
       : s_(s), cycles_(cyc), ins_(ins), ref_cycles_(ref) {}
     std::string s_;

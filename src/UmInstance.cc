@@ -176,3 +176,10 @@ void umm::UmInstance::PgFtCtrs::dump_ctrs(){
   kprintf_force("wr:    %lu\n", wrFaults);
   kprintf_force("cow:   %lu\n", cowFaults);
 }
+
+void umm::UmInstance::PgFtCtrs::zero_ctrs(){
+  pgFaults = 0;
+  rdFaults = 0;
+  wrFaults = 0;
+  cowFaults = 0;
+}

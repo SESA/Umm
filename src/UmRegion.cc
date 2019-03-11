@@ -25,7 +25,7 @@ void Region::Print() {
   kprintf_force("  read-only: %d\n", !writable);
   kprintf_force("  page size: %d\n", kPageSize << page_order);
   kprintf_force("page faults: %d\n", count);
-  kprintf_force("       data: %llu\n", data);
+  kprintf_force("       data: %llx\n", data);
 }
 } // namespace umm
 

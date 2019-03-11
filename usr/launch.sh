@@ -1,9 +1,12 @@
-#/bin/sh
+#!/bin/bash
 # Launch a native EbbRT 'backend' with kvm-qemu
 #
 # Usage:
 # ./launch.sh <elf32> 
 #
+GREEN='\033[0;32m'
+RESET='\033[0m' # No Color
+
 if [ -n "$DEBUG" ]; then set -x; fi
 if [ -n "$DRY_RUN" ]; then 
   echo "***DRY RUN***: Command will not be executed"
@@ -58,5 +61,10 @@ fi
 if [ -n "$NO_NETWORK" ]; then 
 KVM_ARGS="$KVM_ARGS -append 'nodhcp;'"
 fi
+
+echo
+printf "${GREEN}<umm>/usr/launch.sh: Launching with:${RESET}\n"
+echo qemu-system-x86_64 -m $VMEM -smp cpus=$VCPU -cpu host -serial stdio -display none -enable-kvm `eval echo $KVM_NET_OPTS` $KVM_ARGS
+echo
 
 $LAUNCHER qemu-system-x86_64 -m $VMEM -smp cpus=$VCPU -cpu host -serial stdio -display none -enable-kvm `eval echo $KVM_NET_OPTS` $KVM_ARGS

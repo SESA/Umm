@@ -42,6 +42,7 @@ public:
   /** Page Fault counters */
   struct PgFtCtrs {
     void dump_ctrs();
+    void zero_ctrs();
     uint64_t pgFaults = 0;
     uint64_t rdFaults = 0;
     uint64_t wrFaults = 0;
