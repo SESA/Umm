@@ -178,8 +178,16 @@ void umm::UmInstance::PgFtCtrs::dump_ctrs(){
 }
 
 void umm::UmInstance::PgFtCtrs::zero_ctrs(){
+  // Zero per region pfctrs.
   pgFaults = 0;
   rdFaults = 0;
   wrFaults = 0;
   cowFaults = 0;
+}
+
+void umm::UmInstance::ZeroPFCs(){
+  // Zero region specific ctrs of sv.
+  sv_.ZeroPFCs();
+  // Zero aggregate instance ctrs.
+  pfc.zero_ctrs();
 }

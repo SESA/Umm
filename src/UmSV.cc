@@ -18,10 +18,23 @@ namespace umm{
   }
 
 void UmSV::SetEntry(uintptr_t paddr) { ef.rip = paddr; }
-  void UmSV::AddRegion(Region &reg) { region_list_.push_back(reg); }
-void UmSV::Print() {
+void UmSV::AddRegion(Region &reg) { region_list_.push_back(reg); }
+
+void UmSV::ZeroPFCs() {
   for (auto &reg : region_list_)
+    reg.ZeroPFC();
+}
+
+
+void UmSV::Print() {
+  int totalFaults = 0;
+  for (auto &reg : region_list_){
     reg.Print();
+    totalFaults += reg.count;
+    kprintf_force("\n");
+  }
+  kprintf_force("--\n");
+  kprintf_force("Aggregating page faults across regions: %d\n", totalFaults);
   kprintf_force("--\n");
 }
 

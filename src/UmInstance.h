@@ -89,6 +89,7 @@ public:
   bool HasData() { return (!umi_recv_queue_.empty()); };
 
   /* Dump state of the Instance */
+  void ZeroPFCs();
   void Print();
   umi::id Id(){ return id_; }
 
@@ -107,7 +108,6 @@ private:
   bool active_ = true;
   ebbrt::EventManager::EventContext *context_; // blocking context
   umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
-  size_t page_count = 0; // TODO: replace with region-specific counter
   uint64_t runtime_ = 0;
   bool yield_flag_ = false; // signal that the instance can be yielded 
   // TODO: Computing runtime duration within the instance

@@ -23,6 +23,7 @@ namespace umm {
 
     bool AddrIsInRegion(uintptr_t vaddr);
     size_t GetOffset(uintptr_t vaddr);
+    void ZeroPFC();
     void Print();
 
     // Region();

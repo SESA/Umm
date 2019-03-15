@@ -56,6 +56,7 @@ public:
 
   void SetEntry(uintptr_t paddr);
   void AddRegion(Region &reg);
+  void ZeroPFCs();
   void Print();
   // void deepCopy(const UmSV other);
   umm::Region& GetRegionOfAddr(uintptr_t vaddr);

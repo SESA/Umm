@@ -18,6 +18,10 @@ size_t Region::GetOffset(uintptr_t vaddr) {
     return 0;
 }
 
+void Region::ZeroPFC() {
+  count = 0;
+}
+
 void Region::Print() {
   kprintf_force("Region name: %s\n", name.c_str());
   kprintf_force("      start: %p\n", start);
