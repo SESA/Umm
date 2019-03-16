@@ -315,8 +315,8 @@ void umm::UmManager::slot_yield_instance(){
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
   kassert(status() != snapshot);
-  // ebbrt::kprintf_force(CYAN "Snapshotting, core %d \n" RESET, (size_t)
-  // ebbrt::Cpu::GetMine());
+  kprintf(CYAN "Snapshotting, core %d \n" RESET,
+                 (size_t) ebbrt::Cpu::GetMine());
   set_status(snapshot);
 
   UmSV *snap_sv = new UmSV();
@@ -368,6 +368,12 @@ void printPTWalk(uintptr_t virt, umm::simple_pte* root, unsigned char lvl){
 }
 
 void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
+  // {
+  // umm::Region& reg = active_umi_->sv_.GetRegionOfAddr(vaddr);
+  // kprintf_force(RED "%s \n" RESET, reg.name.c_str());
+  // kprintf_force(MAGENTA "vaddr: %p\n" RESET, vaddr);
+  // }
+
   // Pagefault
   kassert(status() != empty);
   kassert(valid_address(vaddr));
@@ -381,40 +387,70 @@ void umm::UmManager::process_pagefault(ExceptionFrame *ef, uintptr_t vaddr) {
 
   lin_addr phys, virt;
   {
+    // This allocates a page for the umi or maps to an elf page.
+    // A ptr to a backing page is the return.
+    // It comes from one of 3 sources:
+    // 1) If this is a copy on write (determined by the PTE existing) a page is
+    //    allocated and copied from the source.
+    // 2) If it's a read only page from the ELF, it's mapped in.
+    // 3) If it's a zeroed page not in the ELF (like BSS or stack), it's
+    //    allocated and zero filled.
     virt.raw = Pfn::Down(vaddr).ToAddr();
+    phys.raw = active_umi_->GetBackingPage(virt.raw, ec);
+  }
 
-    // This allocates a page for the umi. It is filled with data in this call
-    // from one of 3 sources:
-    // 1) If this is a copy on write (determined by the PET existing) it is
-    // copied from the source.
-    // 2) If it's a page from the ELF, it's copied.
-    // 3) If it's a zeroed page not in the ELF (like BSS), it's zero filled.
-    phys.raw = active_umi_->GetBackingPage(virt.raw, ec.isPresent());
+  // Below we map the page into the page table. There are two cases, when the
+  // PT already exists, and when we have to create it from scratch.
+
+  // Use pml4 entry to get ptr to pdpt, top entry of our slot page table.
+  // simple_pte *root = (simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw;
+  simple_pte* slotRoot = UmPgTblMgmt::getSlotRoot();
+
+  if( slotRoot->raw == 0 ){
+    kassert(getSlotPDPTRoot() == nullptr);
   }
 
   // Take that physical page and map it into the VAS creating a PT if necessary.
-  bool writeFault = ec.isWriteFault();
-  simple_pte* slotRoot = UmPgTblMgmt::getSlotRoot();
+  // If the table is not set up, root is 0 and we create it.
 
-  // TODO: Maybe just if notPresent?
-  if (slotRoot->raw == 0) {
-    // No existing slotRoot entry. Create new page table.
-    auto pdpt = UmPgTblMgmt::mapIntoPgTbl(nullptr, phys, virt, PDPT_LEVEL,
-                                          TBL_LEVEL, PDPT_LEVEL, writeFault);
+  simple_pte* pdpt;
+  {
+    umm::Region& reg = active_umi_->sv_.GetRegionOfAddr(virt.raw);
+    // Permission bits of the PTE.
+    bool dirty, readWrite, execDisable;
 
-    // "Install". Set accessed in case a walker strides accessed pages.
-    // Mark PML4 Ent User.
-    slotRoot->setPte(pdpt, false, true, true, true);
+    // // Set dirty bit based on page fault type. Hardware will track later writes.
+    dirty = ec.isWriteFault();
 
-  } else {
-    // Slot root holds ptr to sub PT.
-    UmPgTblMgmt::mapIntoPgTbl((simple_pte *)slotRoot->pageTabEntToAddr(PML4_LEVEL).raw,
-                              phys, virt, PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL, writeFault);
+    // Set Read and Write if the region is writable, two things to note here:
+    // 1) The implementation could be a little lazier if we mapped data pages cow.
+    // 2) TODO: if you set the text pages to R&W, we get a terminal page fault
+    //    which tommyu does not understand. Can be reproduced by commenting in
+    //    the line XXX below.
+    readWrite = (reg.writable) ? true : false;
+    // // XXX: Marking text writable breaks for some reason despite no write ocuring.
+    // readWrite = (reg.writable || reg.name == ".text")  ? true : false;
+
+    // Have to be able to execute the text.
+    // Presumably an interpreter executes on the usr segment.
+    execDisable = (reg.name == ".text" || reg.name == "usr") ? false : true;
+
+    pdpt = UmPgTblMgmt::mapIntoPgTbl(getSlotPDPTRoot(), phys, virt,
+                                     PDPT_LEVEL, TBL_LEVEL, PDPT_LEVEL,
+                                     dirty, readWrite, execDisable
+                                     );
   }
 
-  // NOTE: if we're in the COW case we have to flush the translation!!!
-  if(ec.isPresent()){
-    umm::UmPgTblMgmt::invlpg( (void*) virt.raw);
+  // Configure top level entry, this should be internal to the manager...
+  if (slotRoot->raw == 0) {
+    // Had to build the PT from scratch.
+    // "Install". Set accessed in case a walker strides accessed pages.
+    slotRoot->setPte(pdpt, false, true, true, true);
+  }
+
+  // NOTE: if we're in the COW case we have to flush the stale translation!!!
+  if (ec.isPresent() && ec.isWriteFault()) {
+    umm::UmPgTblMgmt::invlpg((void *)virt.raw);
   }
 }
 

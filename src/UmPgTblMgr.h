@@ -86,7 +86,8 @@ class simple_pte {
         MAPS : 1,
         WHOCARES2 : 4,
         PG_TBL_ADDR : 40,
-        RES : 12;
+        RES : 11,
+        XD  : 1;
     } decompCommon;
   };
   uint64_t pageTabEntToPFN(unsigned char lvl);
@@ -94,7 +95,8 @@ class simple_pte {
   lin_addr cr3ToAddr();
   void printCommon();
   // Set address field of PTE. Optionally dirty bit and accessed bit.
-  void setPte(simple_pte *tab, bool dirty = false, bool acc = false, bool rw = true, bool us = false);
+  void setPte(simple_pte *tab, bool dirty = false, bool acc = false, bool rw = true,
+              bool us = false, bool xd = false);
   void clearPTE();
 private:
   void printBits(uint64_t val, int len);
@@ -185,9 +187,9 @@ namespace UmPgTblMgmt {
                           unsigned char lvl = 4);
 
   // Mappers
-  simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys,
-                           lin_addr virt, unsigned char rootLvl,
-                           unsigned char mapLvl, unsigned char curLvl, bool writeFault);
+  simple_pte *mapIntoPgTbl(simple_pte *root, lin_addr phys, lin_addr virt,
+                           unsigned char rootLvl, unsigned char mapLvl, unsigned char curLvl,
+                           bool writeFault, bool rdPerm = true, bool execDisable = false);
 
   // Root Getters
   simple_pte *getSlotRoot();
@@ -275,7 +277,7 @@ namespace UmPgTblMgmt {
   // Mapper.
    simple_pte *mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
                                         lin_addr virt, unsigned char rootLvl,
-                                  unsigned char mapLvl, unsigned char curLvl, bool writeFault);
+                                  unsigned char mapLvl, unsigned char curLvl, bool writeFault, bool rdPerm, bool execDisable);
   simple_pte *findAndSetPTECOW(simple_pte *root, simple_pte *origPte,
                                  lin_addr virt, unsigned char rootLvl,
                                  unsigned char mapLvl, unsigned char curLvl);

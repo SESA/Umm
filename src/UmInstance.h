@@ -64,7 +64,7 @@ public:
   // This is where the argument page table is copied.
   explicit UmInstance(const UmSV &sv) : sv_(sv){};
   /** Resolve phyical page for virtual address */
-  uintptr_t GetBackingPage(uintptr_t vaddr, bool cow);
+  uintptr_t GetBackingPage(uintptr_t vaddr, x86_64::PgFaultErrorCode ec);
   /** Log PageFault to internal counter */
   void logFault(x86_64::PgFaultErrorCode ec);
 

@@ -5,6 +5,7 @@
 
 #include <ebbrt/native/PageAllocator.h>
 
+#include "util/x86_64.h"
 #include "UmInstance.h"
 #include "UmManager.h"
 #include "umm-internal.h"
@@ -112,11 +113,12 @@ void umm::UmInstance::DisableYield() {
 }
 
 void umm::UmInstance::Print() {
-  kprintf("Number of pages allocated: %d\n", page_count);
   sv_.Print();
 }
 
-uintptr_t umm::UmInstance::GetBackingPage(uintptr_t v_pg_start, bool cow) {
+uintptr_t umm::UmInstance::GetBackingPage(uintptr_t v_pg_start, x86_64::PgFaultErrorCode ec) {
+
+  // Consult region list.
   umm::Region& reg = sv_.GetRegionOfAddr(v_pg_start);
   {
     reg.count++;
@@ -124,32 +126,58 @@ uintptr_t umm::UmInstance::GetBackingPage(uintptr_t v_pg_start, bool cow) {
     kassert(reg.page_order == 0);
   }
 
+  // Sanity check, should never wr fault to a read only section.
+  // This catches writes to text, for example.
+  if(ec.isWriteFault() && !reg.writable ){
+    kprintf_force(RED "I'm confused, we just write faulted on read only section" RESET, v_pg_start);
+    kprintf_force(RED "%s \n" RESET, reg.name.c_str());
+    while(1);
+  }
+
+  // If this is a fault on text or read only data, we don't allocate a page, simply map from elf.
+  // if( reg.name == ".text" || reg.name == ".rodata"){
+  if(!reg.writable){
+    // If we're not in text or rodata, it's a surprise.
+    if( ! ( reg.name == ".text" || reg.name == ".rodata") ){
+      kprintf_force(RED "Surprised to find non writable region %s \n" RESET, reg.name.c_str());
+      while(1);
+    }
+
+    // kprintf_force(RED "%s \n" RESET, reg.name.c_str());
+    uintptr_t elf_pg_addr = (uintptr_t) (reg.data + reg.GetOffset(v_pg_start));
+    // Must be 4k aligned.
+    kassert(elf_pg_addr % (1<<12) == 0);
+    return elf_pg_addr;
+  }
+
   /* Allocate new physical page for the faulted region */
   uintptr_t bp_start_addr;
-  uintptr_t vp_start_addr;
   {
     Pfn backing_page = ebbrt::page_allocator->Alloc();
     kbugon(backing_page == Pfn::None());
-    page_count++;
-
     bp_start_addr = backing_page.ToAddr();
-    vp_start_addr = Pfn::Down(v_pg_start).ToAddr();
   }
 
-  if(cow){
+  // Copy on write condition.
+  // We map the page in COW for 2 reasons:
+  // 1) This could be a rd fault on data with a write to come later.
+  // 2) When we free pages, we only free dirty pages,
+  if(ec.isPresent() && ec.isWriteFault()){
     // Copy on write case.
     std::memcpy((void *)bp_start_addr, (const void *)v_pg_start, kPageSize);
     return bp_start_addr;
   }
 
-  // Check for a backing source
+  // Check for a backing source.
   if (reg.data != nullptr) {
-    unsigned char *elf_src_addr = reg.data + reg.GetOffset(vp_start_addr);
+    unsigned char *elf_src_addr = reg.data + reg.GetOffset(v_pg_start);
     // Copy backing data onto the allocated page
     std::memcpy((void *)bp_start_addr, (const void *)elf_src_addr, kPageSize);
-  } else if (reg.name == ".bss") {
-    // Zero bss pages
+  } else if (reg.name == ".bss" || reg.name == "usr" ) {
+    // Zero bss or stack pages
     std::memset((void *)bp_start_addr, 0, kPageSize);
+  } else {
+    kabort("What other case is there?\n");
   }
 
   return bp_start_addr;

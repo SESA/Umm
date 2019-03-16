@@ -922,7 +922,8 @@ void simple_pte::setPte(simple_pte *tab,
                         bool dirty /*= false*/,
                         bool acc   /*= false*/,
                         bool rw    /*= true*/,
-                        bool us    /*= false*/){
+                        bool us    /*= false*/,
+                        bool xd    /*= false*/){
 
   // TODO(tommyu): generalize to all levels.
   kassert((uint64_t)tab % (1 << 12) == 0);
@@ -935,23 +936,24 @@ void simple_pte::setPte(simple_pte *tab,
   pte.decompCommon.US    = (us)    ? 1 : 0;
   pte.decompCommon.A     = (acc)   ? 1 : 0;
   pte.decompCommon.DIRTY = (dirty) ? 1 : 0;
+  pte.decompCommon.XD    = (xd)    ? 1 : 0;
 
   pte.decompCommon.PG_TBL_ADDR = (uint64_t)tab >> 12;
 
   raw = pte.raw;
 }
 
-simple_pte *UmPgTblMgmt::mapIntoPgTbl(simple_pte *root, lin_addr phys,
-                                      lin_addr virt, unsigned char rootLvl,
-                                      unsigned char mapLvl,
-                                      unsigned char curLvl, bool writeFault) {
-  return mapIntoPgTblHelper(root, phys, virt, rootLvl, mapLvl, curLvl, writeFault);
+simple_pte *UmPgTblMgmt::mapIntoPgTbl(simple_pte *root, lin_addr phys, lin_addr virt,
+                                      unsigned char rootLvl, unsigned char mapLvl, unsigned char curLvl,
+                                      bool writeFault, bool rdPerm, bool execDisable) {
+  return mapIntoPgTblHelper(root, phys, virt,
+                            rootLvl, mapLvl, curLvl,
+                            writeFault, rdPerm, execDisable);
 }
 
-simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
-                                            lin_addr virt, unsigned char rootLvl,
-                                            unsigned char mapLvl,
-                                            unsigned char curLvl, bool writeFault) {
+simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys, lin_addr virt,
+                                            unsigned char rootLvl, unsigned char mapLvl, unsigned char curLvl,
+                                            bool writeFault, bool rdPerm, bool execDisable) {
   kassert(rootLvl >= mapLvl);
   kassert(rootLvl >= curLvl);
   kassert(rootLvl <= PML4_LEVEL && rootLvl >= TBL_LEVEL);
@@ -974,15 +976,21 @@ simple_pte *UmPgTblMgmt::mapIntoPgTblHelper(simple_pte *root, lin_addr phys,
     // TODO: Should this always be marked accessed? Def in copy dirty.
     // printf(MAGENTA "Mapping %p -> %p\n" RESET, virt.raw, phys.raw);
     // Mark mapping PTE user.
-    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true, true, true);
+    // If write, mark dirty and R/W. Otherwise not dirty, read only.
+    // pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true, true, true);
+    pte_ptr->setPte((simple_pte *)phys.raw, writeFault, true, rdPerm, true, execDisable);
   } else {
     if (exists(pte_ptr)) {
       // Recurse to next level
-      mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
+      mapIntoPgTbl(nextTableOrFrame(pte_ptr, 0, curLvl), phys, virt,
+                   rootLvl, mapLvl, curLvl - 1,
+                   writeFault, rdPerm, execDisable);
     } else {
       // Create next level and recurse.
       simple_pte *ret =
-        mapIntoPgTbl(nullptr, phys, virt, rootLvl, mapLvl, curLvl - 1, writeFault);
+        mapIntoPgTbl(nullptr, phys, virt,
+                     rootLvl, mapLvl, curLvl - 1,
+                     writeFault, rdPerm, execDisable);
       // Dirty bit doesn't apply, accessed does.
       // Mark interior PTEs user.
       pte_ptr->setPte(ret, false, true, true, true);
