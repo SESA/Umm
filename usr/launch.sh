@@ -64,7 +64,7 @@ fi
 
 echo
 printf "${GREEN}<umm>/usr/launch.sh: Launching with:${RESET}\n"
-echo qemu-system-x86_64 -m $VMEM -smp cpus=$VCPU -cpu host -serial stdio -display none -enable-kvm `eval echo $KVM_NET_OPTS` $KVM_ARGS
+echo $LAUNCHER qemu-system-x86_64 -m $VMEM -smp cpus=$VCPU -cpu host -serial stdio -display none -enable-kvm `eval echo $KVM_NET_OPTS` $KVM_ARGS
 echo
 
 $LAUNCHER qemu-system-x86_64 -m $VMEM -smp cpus=$VCPU -cpu host -serial stdio -display none -enable-kvm `eval echo $KVM_NET_OPTS` $KVM_ARGS

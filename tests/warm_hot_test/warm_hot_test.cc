@@ -567,7 +567,7 @@ void generateHotSnapshotSVOptimizedTCPTeardown(){
 }
 void deployHotSnapshotSV(){
   // void deployHotSnapshotSV(){
-  ebbrt::kprintf_force(CYAN "Deploy hot snap sv \n" RESET);
+  // ebbrt::kprintf_force(CYAN "Deploy hot snap sv \n" RESET);
   
   auto umi2 = getUMIFromSV( *hot_sv );
   const std::string args = std::string(R"({"spin":"0"})");
@@ -578,7 +578,8 @@ void deployHotSnapshotSV(){
 
   ebbrt::event_manager->SpawnLocal(
       [umsesh] {
-        uint16_t port = 49161;
+        // uint16_t port = 49161;
+        uint16_t port = get_internal_port();
         umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
       },
       /* force async */ true);
@@ -600,12 +601,13 @@ void deployHotSnapshotSV(){
   umi2 = std::move(umm::manager->Run(std::move(umi2)));
   auto end_run = high_resolution_clock::now();
 
-  umi2->pfc.dump_ctrs();
-  umm::manager->ctr.dump_list(umm::manager->ctr_list);
+  // umi2->pfc.dump_ctrs();
+  // umm::manager->ctr.dump_list(umm::manager->ctr_list);
 
-  ebbrt::kprintf_force(YELLOW "Run finished.\n" RESET);
+  // ebbrt::kprintf_force(YELLOW "Run finished.\n" RESET);
   auto run_duration = duration_cast<microseconds>(end_run - start_run);
-  cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
+  // ebbrt::kprintf_force("zztu%d \n", run_duration.count());
+  // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
 
   // umi2->Print();
 }
@@ -783,16 +785,19 @@ void AppMain() {
   // deployAndInitServerAndRun();
   ebbrt::kprintf_force(YELLOW "generating hot snap.\n" RESET);
   // generateHotSnapshotSV();
-  // generateHotSnapshotSVOptimized();
-  generateHotSnapshotSVOptimizedTCPTeardown();
+  generateHotSnapshotSVOptimized();
+  // generateHotSnapshotSVOptimizedTCPTeardown();
 
   ebbrt::kprintf_force(YELLOW "deploying hot snapshot!\n" RESET);
-  deployHotSnapshotSV();
+
+  for(int i = 0; i < 1000; i++){
+    deployHotSnapshotSV();
+  }
 
   // ebbrt::kprintf_force(YELLOW "deploying hot and spicy!\n" RESET);
   // deploySpicyHotSnapshotSV();
 
-
-
   ebbrt::kprintf_force(CYAN "Done!\n" RESET);
+
+  ebbrt::acpi::PowerOff();
 }
