@@ -43,7 +43,7 @@ void umm::InvocationSession::Finish(std::string response) {
   // ebbrt::kprintf_force("InvocationSession finished!\n");
   // Force disconnect of the TCP connection
   // umm::invoker->Resolve(istats_, response);
-  ebbrt::kprintf_force("recieved response %s\n", response.c_str());
+  // ebbrt::kprintf_force("recieved response %s\n", response.c_str());
 
 }
 
