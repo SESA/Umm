@@ -293,30 +293,6 @@ bool umm::UmManager::slot_queue_move_to_front(umi::id id){
   return false;
 }
 
-#if 0
-  bool target_found = false;
-
-  // Copy the queue, clear its contents, push new front object
-  std::queue<umi::id> tmp_queue = inactive_umi_queue_;
-  inactive_umi_queue_ = std::queue<umi::id>();
-  inactive_umi_queue_.emplace(id);
-
-  // Push remaining elements back onto queue
-  while (!tmp_queue.empty()) {
-    auto e = tmp_queue.front();
-    if( e == id) {
-      target_found = true;
-    }else{
-      inactive_umi_queue_.emplace(e);
-    }
-    tmp_queue.pop();
-  }
-  // If the target was not already on the queue don't add it
-  if(!target_found){
-    inactive_umi_queue_.pop();
-  }
-}
-#endif
 
 /* Perform a yield if there is a yield to preform */
 void umm::UmManager::Yield(){
@@ -408,96 +384,6 @@ void umm::UmManager::Yield(){
   return;
 
 }
-
-
-#if 0
-/* Yield the current (idle) instance & schedule in a replacement */
-void umm::UmManager::Yield(){
-
-  // Ignore if the core is active 
-  if (status() == active) {
-    return;
-  } else if (status() == loaded || status() == snapshot ||
-             status() == halting || status() == finished) {
-    // Fail in these cases, they should not happen
-    kabort("UmManager: Attepting to yield in an invaid state = %d\n", status());
-  }
-  // Ignore if no replacement
-  if (inactive_umi_queue_.empty())
-    return;
-
-  /* OK TO YIELD! */
-  /* Activate next instance on the queue */
-  if (ebbrt::event_manager->QueueLength()) {
-    kprintf_force(YELLOW
-            "yield with (%d) pending events \n" RESET,
-            ebbrt::event_manager->QueueLength());
-  }
-
-  // Disable to timer of the current (idle) instance 
-  kbugon(timer_set);
-
-  // Pop the next instance from the queue
-  umi::id next_umi_id = inactive_umi_queue_.front();
-  auto it = inactive_umi_map_.find(next_umi_id);
-  if (it == inactive_umi_map_.end()) {
-    kabort("UmManager: Instance #%d not found...\n", next_umi_id);
-  }
-
-  // Verify that this instance should be scheduled in
-  if( it->second->Yieldable()){
-    kprintf_force(YELLOW "Skipping yield of U%d \n" RESET,
-                  it->second->Id());
-    return;
-  }
-
-  // Go to go. Let's remove the new instance from the scheduling queues 
-  auto next_umi = std::move(it->second);
-  inactive_umi_map_.erase(next_umi_id);
-  inactive_umi_queue_.pop();
-
-  /* Load the instance into the slot */
-  if (status() == idle) {
-    // Swap in the new instance if the slot is idle
-    slot_swap_instance(std::move(next_umi));
-  } else if (status() == empty) {
-    // Load the instance if the slot is empty
-    slot_load_instance(std::move(next_umi));
-  } else {
-    kabort("Attempted yield with status =%d\n", status());
-  }
-  kassert(status() == loaded);
-
-
-  // Next, see if the new instance needs to be booted 
-  auto it2 = activation_promise_map_.find(next_umi_id);
-  if (it2 != activation_promise_map_.end()) {
-    auto ap = std::move(it2->second);
-    activation_promise_map_.erase(next_umi_id);
-    ap.SetValue(next_umi_id); // XXX: This will syncronously call Then(){...}
-    kassert(status() == loaded);
-    // The activation future will take over from here...
-    kprintf(RED "Finished yield core to UMI #%d. TIME TO ACTIVATE!\n" RESET, next_umi_id);
-    return;
-  }
-
-  // Finally, see if this umi is signaled to be halted
-  auto it3 = inactive_umi_halt_map_.find(next_umi_id);
-  if (it3 != inactive_umi_halt_map_.end()) {
-    kprintf(RED "Loading an immediately halting instance #%d!\n" RESET, next_umi_id);
-    inactive_umi_halt_map_.erase(next_umi_id);
-    set_status(idle);
-    Halt();
-    return;
-  }
-
-  /* TODO: Here, we should simply "activate" the instance and let it decide
-   * whether it should be booted, halted, unblocked, etc. */
-  set_status(idle);
-  active_umi_->Activate();
-  return;
-}
-#endif
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
   kassert(status() != snapshot);

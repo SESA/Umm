@@ -210,7 +210,6 @@ void umm::UmInstance::Fire() {
 }
 
 void umm::UmInstance::Print() {
-  kprintf_force("Number of pages allocated: %d\n", page_count);
   sv_.Print();
 }
 
