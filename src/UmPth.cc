@@ -71,7 +71,7 @@ UmPth& UmPth::operator=(const UmPth& rhs){
   return *this;
 }
 
-// TODO: const
+// TODO: const Not used delete me.
 void UmPth::copyInPages(const simple_pte *srcRoot) {
 
   // Flush dirty bits out of caches.

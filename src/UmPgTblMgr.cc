@@ -86,6 +86,7 @@ void UmPgTblMgmt::countValidPagesLamb(std::vector<uint64_t> &counts,
 //   traverseWriteablePages(root, lvl, leafFn);
 // }
 
+// TODO not used delete me.
 void UmPgTblMgmt::doubleCacheInvalidate(simple_pte *root, uint8_t lvl){
   printf("Flushing translation caches two ways\n");
   cacheInvalidateValidPagesLamb(root, lvl);
@@ -287,6 +288,7 @@ void UmPgTblMgmt::dumpAllPTEsWalkLamb(lin_addr la, simple_pte* root,
   walkPageTable(root, lvl, la, recFn, leafFn);
 }
 
+// TODO not used delete me
 void UmPgTblMgmt::setUserAllPTEsWalkLamb(lin_addr la, simple_pte* root,
                                       unsigned char lvl) {
   printf("In %s\n", __func__);
