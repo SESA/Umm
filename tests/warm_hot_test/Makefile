@@ -13,17 +13,8 @@ $(UMM_INSTALL_DIR)/libumm.a:
 target.binelf: $(TARGET)
 	$(USRDIR)/umm target
 
-# run:
-# 	LAUNCHER="taskset -c 1,3,5,7" NO_NETWORK=1 VM_CPU=4 VM_MEM=8G $(USRDIR)/launch.sh warm_hot_test.elf32
-
-# run:
-# 	LAUNCHER="perf kvm --guest stat" NO_NETWORK=1 VM_CPU=4 VM_MEM=8G $(USRDIR)/launch.sh warm_hot_test.elf32
-
-# run:
-# 	LAUNCHER="perf kvm --guest stat taskset -c 1,3,5,7" NO_NETWORK=1 VM_CPU=4 VM_MEM=8G $(USRDIR)/launch.sh warm_hot_test.elf32
-
 run:
-	NO_NETWORK=1 VM_CPU=1 VM_MEM=1G $(USRDIR)/launch.sh warm_hot_test.elf32
+	NO_NETWORK=1 VM_CPU=1 VM_MEM=512 $(USRDIR)/launch.sh warm_hot_test.elf32
 
 gdbrun:
 	NO_NETWORK=1 GDB=1 VM_CPU=4 VM_MEM=8G $(USRDIR)/launch.sh warm_hot_test.elf32

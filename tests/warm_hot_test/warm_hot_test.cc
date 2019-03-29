@@ -685,7 +685,7 @@ void deploySpicy(){
     // ebbrt::kprintf_force(YELLOW "Spicy Hot start connect \n" RESET);
 
     // When connected for spicy, send run.
-    umsesh2->WhenConnected().Then([umsesh2, spicy_start, spicy_record](auto f) {
+    umsesh2->WhenConnected().Then([umsesh2, spicy_record](auto f) {
       // ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
 
       auto this_umi = umm::manager->ActiveInstance();
@@ -694,30 +694,18 @@ void deploySpicy(){
 
       umm::manager->ctr_list.clear(); // Clear placeholder.
       *spicy_record = umm::manager->ctr.CreateTimeRecord(std::string("Spicy"));
-      *spicy_start = high_resolution_clock::now();
 
       const std::string args = std::string(R"({"spin":"0"})");
       umsesh2->SendHttpRequest("/run", args, false);
     });
 
-    umsesh2->WhenFinished().Then([spicy_record, spicy_end,
-                                  spicy_start](auto f) {
-      // ebbrt::kprintf_force(RED "Finished baby!\n" RESET);
-      // umm::manager->ctr.add_to_list(umm::manager->ctr_list, *spicy_record);
-      *spicy_end = high_resolution_clock::now();
-      // ebbrt::kprintf_force(MAGENTA "start = %d , end = %d \n" RESET, *spicy_start, *spicy_end);
-      auto run_duration = duration_cast<microseconds>(*spicy_end - *spicy_start);
-      // umm::manager->ctr.dump_list(umm::manager->ctr_list);
-
-      // ebbrt::kprintf_force("zztu%d \n", run_duration.count());
-      u_sec_list.push_back(run_duration.count());
-      // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-
-    });
-
     // When spicy finished, halt.
-    umsesh2->WhenClosed().Then([&done_spicy](auto f) {
+    umsesh2->WhenClosed().Then([&done_spicy, spicy_end, spicy_start](auto f) {
       // Set value
+      *spicy_end = high_resolution_clock::now();
+      auto run_duration =
+          duration_cast<microseconds>(*spicy_end - *spicy_start);
+      u_sec_list.push_back(run_duration.count());
       done_spicy.SetValue();
       // ebbrt::event_manager->SpawnLocal([] {
       //       umm::manager->Halt();
@@ -730,6 +718,8 @@ void deploySpicy(){
     // Connect!
     {
       uint16_t port = get_internal_port();
+
+      *spicy_start = high_resolution_clock::now();
       umsesh2->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
     }
     spicy_f.Block();
@@ -805,28 +795,26 @@ void AppMain() {
   ebbrt::kprintf_force(YELLOW "Generating Base Env snap.\n" RESET);
   generateBaseEnvtSnapshotSV();
 
-  // ebbrt::kprintf_force(YELLOW "Run server and init!\n" RESET);
-  // deployAndInitServerAndRun();
   ebbrt::kprintf_force(YELLOW "generating hot snap.\n" RESET);
   generateHotSnapshotSV();
   // generateHotSnapshotSVOptimized();
   // generateHotSnapshotSVOptimizedTCPTeardown();
 
-  // ebbrt::kprintf_force(YELLOW "deploying hot snapshot!\n" RESET);
+  // Deploy.
+  int numRuns = 500;
+  for (int i = 0; i < numRuns; i++) {
+    deployHotSnapshotSV();
+  }
 
-  // for (int i = 0; i < 1000; i++) {
-  //   deployHotSnapshotSV();
-  // }
-  // int ctr = 0;
-  // ebbrt::kprintf_force("Count u_sec\n");
-  // for (const auto &val : u_sec_list) {
-  //   ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
-  // }
+  int ctr = 0;
+  ebbrt::kprintf_force("Count u_sec\n");
+  for (const auto &val : u_sec_list) {
+    ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
+  }
 
   // ebbrt::kprintf_force(YELLOW "deploying hot and spicy!\n" RESET);
-  deploySpicyHotSnapshotSV();
+  // deploySpicyHotSnapshotSV();
 
   ebbrt::kprintf_force(CYAN "Done!\n" RESET);
-
   ebbrt::acpi::PowerOff();
 }
