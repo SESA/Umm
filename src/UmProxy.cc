@@ -422,8 +422,7 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
           // Signal yield for external TCP packet with non-zero payload
           auto umi_ref = umm::manager->GetInstance(target_umi);
           kbugon(!umi_ref);
-          umi_ref->DisableYield();
-          umm::manager->SignalResume(target_umi);
+          umi_ref->SetActive();
         }
 
       } // End external TCP processing
@@ -473,9 +472,6 @@ post_masq:
             (size_t)ebbrt::Cpu::GetMine(), target_umi);
     return;
   }
-  // XXX: Signal instance to resume for EVERY new message
-  // TODO: We may want to do something smarter here...
-  umm::manager->SignalResume(target_umi);
 
   /* Convert back to read-only buffer */
   buf = std::unique_ptr<ebbrt::IOBuf>(
@@ -563,10 +559,7 @@ void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
         // Signal yield for external TCP packet with non-zero payload
         auto umi_ref = umm::manager->GetInstance(target_umi);
         kbugon(!umi_ref);
-        umi_ref->EnableYield();
-        // umm::manager->ActiveInstance()->yield_flag = true;
-        // ebbrt::event_manager->SpawnLocal([this]() {  },
-        //                                 true);
+        umi_ref->SetActive();
       }
     }
 
@@ -593,8 +586,7 @@ std::unique_ptr<ebbrt::MutIOBuf> umm::UmProxy::raw_to_iobuf(const void *data,
 
 
 void umm::UmProxy::SetActiveInstance(umm::umi::id id) {
-  kbugon(umi_id_ == id);
-  // clear the mapping cache
+  // clear the mapping cache?
   umi_id_ = id; // set active instance 
   //port_map_cache_.clear();
 }

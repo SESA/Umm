@@ -17,9 +17,11 @@ void solo5_hypercall_poll(volatile void *arg) {
     arg_->ret = 1;
     return;
   }
-  // TODO: Make this a block call on the active instance
-  // umm::manager->Block(arg_->timeout_nsecs);
-  umm::manager->Block(1000);
+  if (arg_->timeout_nsecs > 100000) {
+    umm::manager->Block(100000);
+  }else{
+    umm::manager->Block(arg_->timeout_nsecs);
+  }
   // return from block
 
   if (umm::manager->ActiveInstance()->HasData()) {

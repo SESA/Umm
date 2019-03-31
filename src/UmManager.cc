@@ -168,6 +168,7 @@ void umm::UmManager::SignalHalt(umm::umi::id umi) {
 #endif
     slot_queue_move_to_front(umi);
     inactive_umi_halt_map_.emplace(umi, true);
+    kprintf("[y1]");
     Yield(); 
   }
 }
@@ -178,7 +179,7 @@ void umm::UmManager::SignalYield(umm::umi::id umi) {
     return;
   }
 #if DEBUG_PRINT_SLOT
-  kprintf("C%dU%d:SIG_Y ", (size_t)ebbrt::Cpu::GetMine(),
+  kprintf(YELLOW "C%dU%d:SIG_Y " RESET, (size_t)ebbrt::Cpu::GetMine(),
                 active_umi_->Id());
 #endif
   // Trigger the swap as an async event
@@ -213,9 +214,8 @@ umm::UmInstance *umm::UmManager::GetInstance(umm::umi::id umi) {
   return nullptr;
 }
 
-bool umm::UmManager::RequestActivation(umm::umi::id umi){
+bool umm::UmManager::request_slot_entry(umm::umi::id umi){
   if(ActiveInstanceId() != umi){
-    SignalResume(umi);
     return false;
   }
   if (status() == halting || status() == snapshot || status() == finished) {
@@ -229,10 +229,13 @@ void umm::UmManager::SignalResume(umm::umi::id umi){
 #if DEBUG_PRINT_SLOT
   kprintf(CYAN "C%dU%d:SIG_LD " RESET, (size_t)ebbrt::Cpu::GetMine(), umi);
 #endif
-  if(ActiveInstanceId() != umi){
+  // This UMI is already the active instance. Let's kick it into gear
+  if(ActiveInstanceId() == umi){
+    ActiveInstance()->Kick();
+  }else{
+    // Move UMI to the front of the queue and attempt to yield the slot
     slot_queue_move_to_front(umi);
-    ebbrt::event_manager->SpawnLocal([this]() { this->Yield(); },
-                                     true);
+    ebbrt::event_manager->SpawnLocal([this]() { this->Yield(); }, true);
   }
 }
 
@@ -296,28 +299,38 @@ bool umm::UmManager::slot_queue_move_to_front(umi::id id){
 
 /* Perform a yield if there is a yield to preform */
 void umm::UmManager::Yield(){
-  if(status() != idle && status() != empty ){
-    kprintf(YELLOW "C%d:Y(%d)?" RESET, (size_t)ebbrt::Cpu::GetMine(), status());
+
+  if (slot_has_instance() && active_umi_->IsActive()) {
+    // we can't yield now
+    //kprintf_force("Unable to YIELD: active UMI\n" RESET);
     return;
   }
 
-  if (status() == idle) {
-    if (!active_umi_->Yieldable()) {
-      return;
-    }
-  }
-
-  // Ignore if no replacement target exists
-  if (slot_queue_size() == 0)
+  if (status() != idle && status() != empty) {
+    // we can't yield now
+    //kprintf_force("Unable to YIELD: bad slot status\n" RESET);
     return;
+  }
 
   /* OK, lets try and yield! */
 
-  /* Find the first yieldable instance */
+  // If the queue is empty, unload the slot & queue the current instance
+  if (slot_queue_size() == 0) {
+    auto old_umi = slot_unload_instance();
+    auto old_umi_id = old_umi->Id();
+    inactive_umi_map_.emplace(old_umi_id, std::move(old_umi));
+    // Push the loaded umi TO THE END OF THE QUEUE
+    slot_queue_push(old_umi_id);
+    // Now the core is empty
+    kassert(status() == empty);
+    return;
+  }
+
+  /* Find the first eligable instance */
   umi::id next_umi_id = umi::null_id;
   for (auto it = idle_umi_queue_.begin(); it != idle_umi_queue_.end(); ++it) {
     auto umi = GetInstance(*it);
-    if (umi && !umi->Yieldable()) {
+    if (umi && umi->IsActive()) {
       kassert(umi->Id() == *it);
       next_umi_id = umi->Id();
       break;
@@ -363,7 +376,7 @@ void umm::UmManager::Yield(){
     ap.SetValue(next_umi_id); // XXX: This will syncronously call Then(){...}
     kassert(status() == loaded);
     // The activation future will take over from here...
-    kprintf(RED "Finished yield core to UMI #%d. TIME TO ACTIVATE!\n" RESET, next_umi_id);
+    //kprintf(RED "Finished yield core to UMI #%d. TIME TO ACTIVATE!\n" RESET, next_umi_id);
     return;
   }
 
@@ -377,19 +390,14 @@ void umm::UmManager::Yield(){
     return;
   }
 
-  /* TODO: Here, we should simply "activate" the instance and let it decide
-   * whether it should be booted, halted, unblocked, etc. */
   set_status(idle);
-  active_umi_->Activate();
+  // Unblock the instance 
+  active_umi_->Kick();
   return;
-
 }
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
   kassert(status() != snapshot);
-#if DEBUG_PRINT_SLOT
-  kprintf_force(MAGENTA "C%dU%d:SNAP! " RESET, (size_t)ebbrt::Cpu::GetMine(), active_umi_->Id());
-#endif
   set_status(snapshot);
 
   UmSV *snap_sv = new UmSV();
@@ -401,6 +409,11 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
     Region r = reg;
     snap_sv->AddRegion(r);
   }
+
+#if DEBUG_PRINT_SLOT
+  kprintf_force(MAGENTA "C%dU%d:SNAP! " RESET, (size_t)ebbrt::Cpu::GetMine(), active_umi_->Id());
+  active_umi_->pfc.dump_ctrs();
+#endif
 
   // Copy all dirty pages into new page table.
   snap_sv->pth.copyInPages(getSlotPDPTRoot());
@@ -555,8 +568,6 @@ ebbrt::Future<umm::umi::id>
 umm::UmManager::queue_instance_activation(std::unique_ptr<UmInstance> umi) {
   kassert(status() != empty); // Otherwise.. we should just load and run
   auto id = umi->Id();
-  kprintf(YELLOW "Queueing UMI %d on core #%d\n" RESET, id,
-          (size_t)ebbrt::Cpu::GetMine());
   auto umi_p = ebbrt::Promise<umi::id>();
   auto umi_f = umi_p.GetFuture();
   slot_queue_push(id);
@@ -640,7 +651,7 @@ umm::UmManager::Load(std::unique_ptr<umm::UmInstance> umi) {
 		// If slot is empty load right away
     slot_load_instance(std::move(umi));
     return ebbrt::MakeReadyFuture<umm::umi::id>(id);
-  } else if (status() == idle && active_umi_->Yieldable()) {
+  } else if (status() == idle && active_umi_->IsInactive()) {
     // If current umi is idle and can yield, swap in new instance
     auto loaded_id = slot_swap_instance(std::move(umi));
     kbugon(loaded_id != id);
@@ -663,10 +674,16 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Start(umm::umi::id umi_id) {
   // Return here after Halt is called
   if (slot_queue_size()) {
     // Instance can yeild. Start process
-    //kprintf(YELLOW "Finished execution... But there are %d more UMIs on this core (core%u)\n" RESET,
-    //        slot_queue_size(), (size_t)ebbrt::Cpu::GetMine());
-    ebbrt::event_manager->SpawnLocal([this]() { this->Yield(); },
-                                     true);
+#if DEBUG_PRINT_SLOT
+    kprintf(YELLOW "Finished execution: There are %d more UMIs on this core (core%u)\n" RESET,
+            slot_queue_size(), (size_t)ebbrt::Cpu::GetMine());
+#endif
+    ebbrt::event_manager->SpawnLocal(
+        [this]() {
+          kprintf("[y4]");
+          this->Yield();
+        },
+        true);
   }
   return slot_unload_instance(); // Assume the umi remains loaded
 }
@@ -683,7 +700,7 @@ umm::UmManager::Run(std::unique_ptr<umm::UmInstance> umi) {
     slot_load_instance(std::move(umi));
   } else if (status() == idle) {
     // If the core is idle we'll try and take over
-    if (active_umi_->Yieldable()) {
+    if (active_umi_->IsActive()) {
       // Yes, this umi can yield
       kabort(RED "(TODO): Swap active instance with new one", RESET);
       // TODO: Swap in and queue
@@ -733,14 +750,11 @@ void umm::UmManager::set_snapshot(uintptr_t vaddr) {
 
   void umm::UmManager::Block(size_t ns) {
     set_status(idle);
-    /** If we can schedule in a new instance begin that process,
-        otherwise set a timer and block */
-    active_umi_->Block(ns); // Release the core 
-    // Return here only after call to Activate()
-    if (status() == halting) {
+    active_umi_->Sleep(ns);  /* sleeping... */
+    // Return here once woken up
+    if (status() == halting || status() == finished) {
       kabort("We should never see this\n");
     }
-    kassert(status() != finished);
     set_status(active);
   }
 
@@ -749,14 +763,16 @@ void umm::UmManager::set_snapshot(uintptr_t vaddr) {
     //               active_umi_->sv_.pth.Root());
 
     kbugon(status() == empty);
-    active_umi_->DisableYield();
+    active_umi_->SetActive(); // Prevent current instance from being swapped out
     set_status(halting);
 
     if (ebbrt::event_manager->QueueLength()) {
+#if DEBUG_PRINT_SLOT
       kprintf(
           YELLOW
           "Attempting to clear (%d) pending events before halting...\n" RESET,
           ebbrt::event_manager->QueueLength());
+#endif
       ebbrt::event_manager->SpawnLocal([this]() { this->Halt(); }, true);
       return;
     }
@@ -764,11 +780,12 @@ void umm::UmManager::set_snapshot(uintptr_t vaddr) {
     kassert(status() != empty);
     auto umi_id = active_umi_->Id();
 #if DEBUG_PRINT_SLOT
-    kprintf_force(YELLOW "C%dU%d:HLT " RESET,
+    kprintf_force(YELLOW "C%dU%d:HLT\n" RESET,
             (size_t)ebbrt::Cpu::GetMine(), umi_id);
 #endif
     // Clear proxy data
     proxy->RemoveInstanceState(umi_id);
+
     trigger_bp_exception();
   }
 

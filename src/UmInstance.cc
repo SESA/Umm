@@ -79,6 +79,7 @@ void umm::UmInstance::RegisterPort(uint16_t port){
 }
 
 void umm::UmInstance::WritePacket(std::unique_ptr<ebbrt::IOBuf> buf){
+  umm::manager->SignalResume(Id());
   umi_recv_queue_.emplace(std::move(buf));
 }
 
@@ -91,86 +92,103 @@ std::unique_ptr<ebbrt::IOBuf> umm::UmInstance::ReadPacket(){
 }
 
 
-void umm::UmInstance::Block(size_t ns){
+void umm::UmInstance::Sleep(size_t ns){
   if (timer_set) {
-    kabort("Instance attempted to block with a timer already set");
+    kabort("Instance attempted to sleep with a timer already set");
   }
   if (!ns) {
     return;
   }
-  // Set timer and deactivate
-  auto now = ebbrt::clock::Wall::Now();
-  time_wait = now + std::chrono::nanoseconds(ns);
-  enable_timer(now);
+
+  // If the instance is active, we'll set a timer before yielding the core. If the
+  // instance is inactive, no timer will be set and the UmManager will be signaled
+  // to swap out the instance.
+  if (IsActive()) {
+    // About to go to sleep, set timer and deactivate
+    auto now = ebbrt::clock::Wall::Now();
+    time_wait = now + std::chrono::nanoseconds(ns);
+    enable_timer(now);
 #if DEBUG_PRINT_UMI
-  kprintf(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(),
-                Id(), (ns / 1000));
+    kprintf(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(), Id(),
+            (ns / 1000));
 #endif
-  if( yield_flag_ )
-  {
-    umm::manager->SignalYield(Id());
-  }
-  Deactivate();
+  } 
+  
+  block_execution();
   // Woke up!
-  disable_timer();
 }
 
-void umm::UmInstance::Activate(){
-  kassert(!active_);
+void umm::UmInstance::Kick(){
+  /* TODO: We should simply "alert" the instance and let it decide
+   * whether should happen next: boot, halt, unblock, etc. */
+
+  // For now, try to unblock when kicked
+  if (blocked_) {
+    unblock_execution();
+  }
+}
+
+void umm::UmInstance::unblock_execution(){
   kassert(context_);
 #if DEBUG_PRINT_UMI
-  kprintf_force("C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  kprintf_force(CYAN "C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
-  active_ = true;
+  // WARNING: THIS IS AN ASYNCHRONOUS EVENT
+  blocked_ = false; 
   ebbrt::event_manager->ActivateContext(std::move(*context_));
+  // Return to caller
 }
 
-void umm::UmInstance::Deactivate() {
-  kassert(active_);
-  active_ = false;
+void umm::UmInstance::block_execution() {
   context_ = new ebbrt::EventManager::EventContext();
 #if DEBUG_PRINT_UMI
   kprintf_force( "C%dU%d:DWN " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
-  /* Instance is about to blocked */ 
-  ebbrt::event_manager->SaveContext(*context_);
-  /* ... */
-  /* Now we are re-activated. Check with the core to see if we can resume */
-  if (umm::manager->RequestActivation(Id()) == false) {
-    // We're raced between activating this instance and halting it/scheduling it out 
+  /* Instance is about to block */
+  blocked_ = true; 
+  ebbrt::event_manager->SaveContext(*context_); /* ... now blocked ...*/
+
+  /* OK! We're back! */
+
+  disable_timer(); // NOT SURE ABOUT THIS..
+  context_ = nullptr;
+
+  // WARNING: ebbrt::event_manager->ActivateContext is an ASYNCHRONOUS
+  // operation, so
+  // its possible that the state of the world has changed since the call was
+  // made to unblock execution.
+
+  /* Check with the master to see if we can start */
+  if (umm::manager->request_slot_entry(Id()) == false) {
+    // Hmm... Looks like we am not able to start
 #if DEBUG_PRINT_UMI
-    kprintf_force(CYAN "C%dU%d:UP? " RESET,
-            (size_t)ebbrt::Cpu::GetMine(), Id());
+    kprintf_force(RED "C%dU%d:XXX " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
-    resume_flag_ = true;
-    Deactivate();  // This possibly blocks forever
+    block_execution(); // XXX: No timer, it's up to the UmManager to restore us
+  } else {
+    kassert(umm::manager->ActiveInstanceId() == Id());
+#if DEBUG_PRINT_UMI
+    kprintf_force("C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+#endif
   }
-#if DEBUG_PRINT_UMI
-  kprintf_force( "C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(),
-          Id());
-#endif
-  resume_flag_ = false;
-  kbugon(umm::manager->ActiveInstanceId() != Id());
+  return; /* WARNING: Returns back into the slot address space */
 }
 
-bool umm::UmInstance::Yieldable() { return (yield_flag_ && !resume_flag_); }
-
-void umm::UmInstance::EnableYield() {
-  if(!yield_flag_){
+void umm::UmInstance::SetActive() {
+  if(!active_){
 #if DEBUG_PRINT_UMI
-    kprintf_force(CYAN "C%dU%d:YON " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+    kprintf_force(GREEN "C%dU%d:ON " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
-    yield_flag_ = true;
+		active_ = true;
   }
-  //XXX: what about resume_flag_?
 }
 
-void umm::UmInstance::DisableYield() {
-  if(yield_flag_){
+void umm::UmInstance::SetInactive() {
+  if(active_){
 #if DEBUG_PRINT_UMI
-    kprintf_force(CYAN "C%dU%d:YOFF " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+    kprintf_force(GREEN "C%dU%d:OFF " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
-    yield_flag_ = false;
+    active_ = false;
   }
 }
 
@@ -203,8 +221,8 @@ void umm::UmInstance::Fire() {
   if (time_wait != ebbrt::clock::Wall::time_point() && now >= time_wait) {
     time_wait = ebbrt::clock::Wall::time_point(); // clear the time
     /* Request activation */
-    if (umm::manager->RequestActivation(Id())) {
-      Activate();
+    if (umm::manager->request_slot_entry(Id())) {
+      Kick();
     }
   }
 }

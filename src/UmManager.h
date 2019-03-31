@@ -97,8 +97,9 @@ public:
   /** Signal the core to restore a yielded instance */
   void SignalResume(umm::umi::id id);
 
-  /* An instance wants to resume */
-  bool RequestActivation(umm::umi::id);
+  /* Confirm an instance is safe to start execution in the slot address space */
+  //TODO: make protected 
+  bool request_slot_entry(umm::umi::id);
 
   /** Public utility/helpter functions */
 

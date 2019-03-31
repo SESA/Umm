@@ -80,27 +80,38 @@ public:
   /** Trigger SV creation at the elf symbol located at vaddr */
   ebbrt::Future<UmSV*> SetCheckpoint(uintptr_t vaddr);
 
-  /* Stack Management */
-  void Activate();
-  void Deactivate();
-  void Block(size_t ns);
+  /* Block for (at least) `ns` nanoseconds. Inactive instance will be
+   * unloaded. Execution will be yielded. */
+  void Sleep(size_t ns);
 
   /* Preemption Management */
 
-  /* Return true if this instance can be preempted, false otherwise 
-    A preemptable instance... 
-      1. If active, will be yielded on next request
-      2. If idle, will not be scheduled back in
+  /* An UM instance is either Active or Inactive, effecting its preemption
+behaviour within the execution slot.
+
+  Active:
+       - If loaded, an active instance can not be unloaded
+       - If not loaded, an active instance can be loaded in
+       - When blocking, instance remains loaded and a timer is set
+  Inactive:
+       - If loaded, inactive instance can be unloaded
+       - If not loaded, an inactive will not be swapped in
+       - When blocking, instance will be unloaded
   */
-  bool Yieldable(); 
 
-  /* Make this instance yieldable */
-  void EnableYield(); 
+  void Kick();
 
-  /* Make this instance non-yieldable */
-  void DisableYield(); 
+  /* Mark instance as active, if not already */
+  void SetActive(); 
+
+  /* Mark instance as inactive, if not already */
+  void SetInactive(); 
+
+  bool IsActive() { return active_; };
+  bool IsInactive() { return !active_; };
 
   /* IO Management */
+
   std::unique_ptr<ebbrt::IOBuf> ReadPacket();
   void WritePacket(std::unique_ptr<ebbrt::IOBuf>);
   bool HasData() { return (!umi_recv_queue_.empty()); };
@@ -126,6 +137,14 @@ public:
   ebbrt::Promise<UmSV *> *snap_p;
 
 private:
+  /* Status flags */
+  bool active_ = true; // UMI is either Active or Inactive
+  bool blocked_ = false; // UMI (active or inactive) can be Blocked/Unblocked
+
+  /* Execution Management - these control the underlying event context */
+  void block_execution();
+  void unblock_execution();
+
   /** Timing */
   void enable_timer(ebbrt::clock::Wall::time_point now);
   void disable_timer(); 
@@ -137,14 +156,10 @@ private:
   // clock_).count();
 
   /* Internal state */
-  std::queue<std::unique_ptr<ebbrt::IOBuf>> umi_recv_queue_;
-  bool active_ = true;
   ebbrt::EventManager::EventContext *context_; // blocking context
   umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
-  uint64_t runtime_ = 0;
-  bool yield_flag_ = false;  // shows the instance can be or is yielded
-  bool resume_flag_ = false; // shows that the instance has requested to be resumed
-}; // umm::UmInstance
+  std::queue<std::unique_ptr<ebbrt::IOBuf>> umi_recv_queue_;
+}; // end umm::UmInstance
 }
 
 #endif // UMM_UM_INSTANCE_H_
