@@ -91,4 +91,11 @@ void UmPth::copyInPages(const simple_pte *srcRoot) {
 
   kassert(root_ != nullptr);
 }
+  size_t UmPth::CountOwnedPages() const{
+    std::vector<uint64_t> counts (5);
+    UmPgTblMgmt::countWritablePagesLamb(counts, root_, lvl_);
+
+    return counts[1];
+
+  }
 }

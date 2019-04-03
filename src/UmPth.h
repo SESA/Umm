@@ -27,6 +27,8 @@ public:
   simple_pte *Root() const { return root_; }
   void copyInPages(const simple_pte *srcRoot);
   void printMappedPagesCount() const;
+
+  size_t CountOwnedPages() const;
 private:
   simple_pte *root_;
   uint8_t lvl_;

@@ -140,7 +140,7 @@ std::string umm::InvocationSession::http_post_request(std::string path,
   // TODO: avoid locking operation
   msg.erase(std::remove(msg.begin(), msg.end(), '\n'), msg.end());
   payload << "{\"value\": ";
-  if (path == "/init") {
+  if (path == "/init" || path == "/preInit") {
     payload << "{\"main\":\"main\", \"code\":\"" << msg << "\"}}";
   } else {
     payload << msg << "}";

@@ -19,13 +19,13 @@
 #include <Umm.h>
 #include <InvocationSession.h>
 
-#include <chrono> 
-#include <iostream> 
+#include <chrono>
+#include <iostream>
 #include <list>
 std::list<int> u_sec_list;
 
-using namespace std; 
-using namespace std::chrono; 
+using namespace std;
+using namespace std::chrono;
 
 class AppTcpSession;
 
@@ -97,7 +97,8 @@ private:
 const std::string my_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/app.js",
  "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16", "gw":"169.254.1.0"}})";
 umm::UmSV* snap_sv;
-umm::UmSV* hot_sv;
+umm::UmSV* opt_base_sv;
+umm::UmSV* warm_sv;
 
 umm::UmSV& getSVFromElf(){
   // Generated UM Instance from the linked in Elf
@@ -111,7 +112,150 @@ std::unique_ptr<umm::UmInstance> getUMIFromSV(umm::UmSV& sv){
   return std::make_unique<umm::UmInstance>(sv);
 }
 
-void generateBaseEnvtSnapshotSV(){
+umm::InvocationSession* create_session() {
+  // NOTE: old way of stack allocating pcb and istats.
+  // ebbrt::NetworkManager::TcpPcb pcb;
+  // InvocationStats istats = {0};
+
+  auto pcb = new ebbrt::NetworkManager::TcpPcb;
+  auto isp = new umm::InvocationStats;
+
+  *isp = {0};
+  // (*isp).transaction_id = tid;
+  // (*isp).function_id = fid;
+  // TODO: leak
+  return new umm::InvocationSession(std::move(*pcb), *isp);
+}
+
+const std::string getDummyCode() {
+  // Our javascript function to send in.
+  return std::string(R"(
+function main(args) {
+  console.log('dummy print statement');
+  return {done : true};
+};
+)"
+                     );
+}
+
+const std::string getCode(){
+  // Our javascript function to send in.
+  return std::string(R"(
+function spin(pow2_count) {
+  var count = 0;
+  var max = 1 << pow2_count;
+  for (var line = 1; line < max; line++) {
+    count++;
+  }
+  return {done : true, c : count};
+};
+
+function httpget(url){return new Promise((resolve, reject) => {
+  setTimeout(function() { resolve({done : true}); }, 10000);
+  const lib = require('http');
+  const request = lib.get(url, (response) => {
+    if (response.statusCode < 200 || response.statusCode > 299) {
+      reject(new Error('Failed to load page, status code: ' +
+                       response.statusCode));
+    }
+    const body = [];
+    response.on('data', (chunk) => body.push(chunk));
+    response.on(
+        'end',
+        () => resolve(
+            {done : true, code : response.statusCode, msg : body.join('')}));
+  });
+  request.on('error', (err) => reject(err))
+})};
+
+function main(args) {
+  if (!args) {
+    return spin(0);
+  } else {
+    if ('spin' in args) {
+      return spin(args.spin);
+    }
+    if ('url' in args) {
+      return httpget(args.url);
+    }
+    return spin(0);
+  }
+};
+)"
+                     );
+
+}
+
+const std::string getArgs(){
+  return std::string(R"({"spin":"0"})");
+}
+
+void regSnapshot(umm::UmSV **snap, ebbrt::Future<umm::UmSV *> *warm_sv_f){
+    // Halt sv after future is fulfilled.
+    warm_sv_f->Then([snap](ebbrt::Future<umm::UmSV *> warm_sv_f) {
+      // Spawn asyncronously allows the debug context clean up correctly
+      *snap = warm_sv_f.Get();
+      // ebbrt::kprintf_force(RED "BaseEnvtSnap owns %d pages\n" RESET,
+      // snap_sv->CountOwnedPages());
+      ebbrt::event_manager->SpawnLocal(
+          [=]() {
+            umm::manager->Halt(); /* Does not return */
+          },
+          /* force_async = */ true);
+    }); // End snap_f.Then(...)
+}
+
+void regConnect(auto umsesh){
+  /* Spawn a new event to make a connection with the instance */
+  ebbrt::event_manager->SpawnLocal(
+      [umsesh] {
+        // Start a new TCP connection with the http request
+        // ebbrt::kprintf_force(YELLOW "Connecting \n" RESET);
+        // uint16_t port = 0;
+        uint16_t port = get_internal_port();
+        (*umsesh)->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
+      },
+      /* force async */ true);
+}
+
+void regSendInitOnConnect(auto umsesh, bool keepAlive){
+  /* Setup the asyncronous operations on the InvocationSession */
+  (*umsesh)->WhenConnected().Then([umsesh, keepAlive](auto f) {
+    // ebbrt::kprintf_force(YELLOW "Connected, sending init\n" RESET);
+      (*umsesh)->SendHttpRequest("/init", getCode(), keepAlive /* keep_alive */);
+  });
+}
+
+void regSendRunOnConnect(auto umsesh){
+  (*umsesh)->WhenConnected().Then([umsesh](auto f) {
+    // ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
+    (*umsesh)->SendHttpRequest("/run", getArgs(), false);
+  });
+}
+
+void regSendRunOnInit(auto umsesh){
+  (*umsesh)->WhenInitialized().Then([umsesh](auto f) {
+    // ebbrt::kprintf_force(YELLOW "Initted sending run\n" RESET);
+    (*umsesh)->SendHttpRequest("/run", getArgs(), false);
+  });
+}
+
+void regHaltOnClose(auto umsesh){
+  // Halt when closed or aborted
+  (*umsesh)->WhenClosed().Then([](auto f) {
+    // ebbrt::kprintf_force(YELLOW "Connection Closed...\n" RESET);
+    ebbrt::event_manager->SpawnLocal(
+        [] {
+          // ebbrt::kprintf_force(YELLOW "Halting...\n" RESET);
+          // umm::manager->SignalHalt(umi_id); /* Return to back to
+          // init_code_and_snap */
+          umm::manager->Halt();
+        },
+        /* force async */ true);
+  });
+}
+
+void generateBaseEnvtSnapshot(){
 
   // Use ELF to make SV, use sv to make umi.
   std::unique_ptr<umm::UmInstance> umi = getUMIFromSV( getSVFromElf() );
@@ -130,124 +274,153 @@ void generateBaseEnvtSnapshotSV(){
   ebbrt::Future<umm::UmSV *> snap_f =
       umi->SetCheckpoint(umm::ElfLoader::GetSymbolAddress("uv_uptime"));
 
-  // Halt sv after future is fulfilled.
-  snap_f.Then([](ebbrt::Future<umm::UmSV *> snap_f) {
-    // Spawn asyncronously allows the debug context clean up correctly
-    snap_sv = snap_f.Get();
-    // ebbrt::kprintf_force(YELLOW "Got snapshot, about to call halt\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [=]() {
-          // ebbrt::kprintf_force(YELLOW "Halting first execution...\n" RESET);
-          umm::manager->Halt(); /* Does not return */
-        },
-        /* force_async = */ true);
-  }); // End snap_f.Then(...)
+  // Uses global snap_sv
+  regSnapshot(&snap_sv, &snap_f);
 
-  // Start the first execution.
   umm::manager->Run(std::move(umi));
 }
 
-void deployServerFromSnap(){
-  // ebbrt::kprintf_force(YELLOW "Creating 2nd umi...\n" RESET);
-  auto umi2 = getUMIFromSV( *snap_sv );
+void generateBaseEnvtSnapshotOpt(){
+  // Set base snap here.
+  generateBaseEnvtSnapshot();
 
-  ebbrt::event_manager->SpawnLocal(
-      [=]() {
-        // ebbrt::kprintf_force(YELLOW "New spawn local\n" RESET);
-        ebbrt::NetworkManager::TcpPcb pcb;
-        app_session = new AppTcpSession(std::move(pcb));
-        app_session->Install();
-        app_session->is_connected.Then([=](auto f) {
-          // ebbrt::kprintf_force(GREEN "Alright, we are connected!\n" RESET);
-        });
-
-        // ebbrt::kprintf_force(YELLOW "Attempting connection\n" RESET);
-        app_session->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080);
-      },
-      /* force_async = */ true);
-
-  umm::manager->Run(std::move(umi2));
-}
-
-umm::InvocationSession* create_session(uint64_t tid, size_t fid) {
-  // NOTE: old way of stack allocating pcb and istats.
-  // ebbrt::NetworkManager::TcpPcb pcb;
-  // InvocationStats istats = {0};
-
-  auto pcb = new ebbrt::NetworkManager::TcpPcb;
-  auto isp = new umm::InvocationStats;
-
-  *isp = {0};
-  // (*isp).transaction_id = tid;
-  // (*isp).function_id = fid;
-  // TODO: leak
-  return new umm::InvocationSession(std::move(*pcb), *isp);
-}
-
-void deployAndInitServerAndRun(){
-  // kprintf_force(YELLOW "Processing WARM start \n" RESET);
-  uint64_t tid = 0;
-  size_t fid = 0;
-  const std::string args = std::string(R"({"spin":"0"})");
-  // const std::string code =R"(function main(args) { var count=args.foo; console.log(count); return {done:true, c:count}; })";
-
-  const std::string code =R"(function spin(pow2_count){ var count = 0; var max = 1<<pow2_count; for (var line=1; line<max; line++) { count++; } return {done:true, c:count}; }; function httpget(url) { return new Promise((resolve, reject) => { setTimeout(function() { resolve({ done: true }); }, 10000); const lib = require('http'); const request = lib.get(url, (response) => { if (response.statusCode < 200 || response.statusCode > 299) { reject(new Error('Failed to load page, status code: ' + response.statusCode)); } const body = []; response.on('data', (chunk) => body.push(chunk)); response.on('end', () => resolve({done:true, code:response.statusCode, msg:body.join('')})); }); request.on('error', (err) => reject(err)) }) }; function main(args) { if(!args){ return spin(0); } else{ if('spin' in args){ return spin(args.spin); } if('url' in args){ return httpget(args.url);}return spin(0);}};)";
-
-  /* Load up the base snapshot environment */
-  ebbrt::kprintf_force(YELLOW "Loading from snap\n" RESET);
-
+  // Deploy from orig snap.
   auto umi = getUMIFromSV( *snap_sv );
 
-  // ebbrt::Future<umm::UmSV*> hot_sv_f = umi->SetCheckpoint(
-  //     umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+  // Optimized snap
+  ebbrt::Future<umm::UmSV *> opt_base_f =
+    umi->SetCheckpoint(umm::ElfLoader::GetSymbolAddress("uv_uptime"));
 
-  // HACK: subvert SetCheckpoint
+  // using global opt_base_sv pointer.
+  regSnapshot(&opt_base_sv, &opt_base_f);
 
-  // x86_64::DR0 dr0;
-  // dr0.get();
-  // dr0.val = 0;
-  // dr0.set();
+  auto umsesh = create_session();
+  regConnect(&umsesh);
 
-  // ebbrt::kprintf_force(MAGENTA "RUNNING ! \n" RESET);
 
-  // auto umi_id = umi->Id();
-  auto umsesh = create_session(tid, fid);
+  umsesh->WhenConnected().Then([umsesh](auto f) {
+                                 // ebbrt::kprintf_force(CYAN "Connected, sending nopInit\n" RESET);
+                                 bool keepAlive = true;
+                                 // bool keepAlive = false;
+                                 umsesh->SendHttpRequest(
+                                                         "/preInit",
+                                                         // "/init",
+                                                         getDummyCode(),
+                                                         keepAlive /* keep_alive */);
+                               });
 
-  /* Spawn a new event to make a connection with the instance */
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        uint16_t port = 0;
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
+  umsesh->WhenInitialized().Then([umsesh](auto f) {
+                                   // ebbrt::kprintf_force(CYAN "Initted sending nopRun\n" RESET);
+                                   umsesh->SendHttpRequest(
+                                                           "/preRun",
+                                                           // "/run",
+                                                           getArgs(), false);
+                                 });
 
-  /* Setup the asyncronous operations on the InvocationSession */
-  umsesh->WhenConnected().Then([umsesh, code](auto f) {
-    // ebbrt::kprintf_force(YELLOW "Connected, sending init\n" RESET);
-    umsesh->SendHttpRequest("/init", code, true /* keep_alive */);
-  });
+  umm::manager->Run(std::move(umi));
+}
 
-  umsesh->WhenInitialized().Then([umsesh, args](auto f) {
-    umsesh->SendHttpRequest("/run", args, false);
-  });
+void generateWarmSnapshot(bool optimize) {
+  /* Load up the base snapshot environment */
+  // ebbrt::kprintf_force(YELLOW "Loading base env from snap\n" RESET);
+  // auto umi;
 
-  // Halt when closed or aborted
-  umsesh->WhenClosed().Then([](auto f) {
-    // ebbrt::kprintf_force(YELLOW "Connection Closed...\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [] {
-          // ebbrt::kprintf_force(YELLOW "Halting...\n" RESET);
-          // umm::manager->SignalHalt(umi_id); /* Return to back to
-          // init_code_and_snap */
-          umm::manager->Halt();
-        },
-        /* force async */ true);
-  });
+  umm::UmSV *snap;
+  {
+    if (optimize) {
+      generateBaseEnvtSnapshotOpt();
+      snap = opt_base_sv;
+    } else {
+      generateBaseEnvtSnapshot();
+      snap = snap_sv;
+    }
+  }
+  auto umi = getUMIFromSV( *snap );
+
+
+  ebbrt::Future<umm::UmSV *> warm_sv_f =
+    umi->SetCheckpoint(umm::ElfLoader::GetSymbolAddress("uv_uptime"));
+
+  // Uses global warm_sv.
+  regSnapshot(&warm_sv, &warm_sv_f);
+
+  auto umsesh = create_session();
+
+  regConnect(&umsesh);
+
+  bool optimizeStart = false;
+  regSendInitOnConnect(&umsesh, !optimizeStart);
+
+  regHaltOnClose(&umsesh);
 
   /* Boot the snapshot */
-  ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
-  umm::manager->ctr_list.clear();
+
+  // ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
+  umi = std::move(umm::manager->Run(std::move(umi)));
+}
+
+auto initInstance(){
+  // Create sv.
+  auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
+
+  // Create instance.
+  auto umi = std::make_unique<umm::UmInstance>(sv);
+
+  // Configure solo5 boot arguments
+  // Nop without listener.
+  // const std::string the_cmd = R"({"cmdline":"bin/node-default /nodejsActionBase/nop.js"})";
+
+  uint64_t argc = Solo5BootArguments(sv.GetRegionByName("usr").start, SOLO5_USR_REGION_SIZE, my_cmd);
+  umi->SetArguments(argc);
+
+  return umi;
+}
+
+void deployFullBoot(){
+  // This is for timing the listener bringup
+  auto start = high_resolution_clock::now();
+  auto umi = initInstance();
+  umi = std::move(umm::manager->Run(std::move(umi)));
+  auto end = high_resolution_clock::now();
+
+  umi->pfc.dump_ctrs();
+  // umm::manager->ctr.dump_list(umm::manager->ctr_list);
+  auto run_duration = duration_cast<microseconds>(end - start);
+  u_sec_list.push_back(run_duration.count());
+
+  ebbrt::kprintf_force(YELLOW "Done cold start.\n" RESET);
+}
+
+void deployColdStart(bool useOpt){
+  /* Load up the base snapshot environment */
+  // ebbrt::kprintf_force(MAGENTA "Deploying Cold Start\n" RESET);
+  umm::UmSV *snap;
+  {
+    if(useOpt){
+      snap = opt_base_sv;
+    }else{
+      snap = snap_sv;
+    }
+  }
+  auto umi = getUMIFromSV(*snap);
+
+  auto umsesh = create_session();
+
+  /* Spawn a new event to make a connection with the instance */
+  regConnect(&umsesh);
+
+  /* Setup the asyncronous operations on the InvocationSession */
+  bool keepAlive = true;
+  regSendInitOnConnect(&umsesh, keepAlive);
+
+  regSendRunOnInit(&umsesh);
+
+  // Halt when closed or aborted
+  regHaltOnClose(&umsesh);
+
+  /* Boot the snapshot */
+  // ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
+  // umm::manager->ctr_list.clear();
 
   // umm::manager->Run(std::move(umi));
   auto start_run = high_resolution_clock::now();
@@ -255,353 +428,33 @@ void deployAndInitServerAndRun(){
   auto end_run = high_resolution_clock::now();
 
   umi->pfc.dump_ctrs();
-  umm::manager->ctr.dump_list(umm::manager->ctr_list);
+  // umm::manager->ctr.dump_list(umm::manager->ctr_list);
 
   auto run_duration = duration_cast<microseconds>(end_run - start_run);
-  cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-  // cout << "Snapshot is this many pages: " << umm::manager->num_cp_pgs << endl;
-
-  /* RETURN HERE AFTER HALT */
-  delete umsesh;
-  //kprintf_force(YELLOW "Finished WARM start \n" RESET);
+  // ebbrt::kprintf_force("%d us\n", run_duration.count());
+  u_sec_list.push_back(run_duration.count());
 }
 
-void generateHotSnapshotSV(){
-  // kprintf_force(YELLOW "Processing WARM start \n" RESET);
-
-  const std::string code =R"(function spin(pow2_count){ var count = 0; var max = 1<<pow2_count; for (var line=1; line<max; line++) { count++; } return {done:true, c:count}; }; function httpget(url) { return new Promise((resolve, reject) => { setTimeout(function() { resolve({ done: true }); }, 10000); const lib = require('http'); const request = lib.get(url, (response) => { if (response.statusCode < 200 || response.statusCode > 299) { reject(new Error('Failed to load page, status code: ' + response.statusCode)); } const body = []; response.on('data', (chunk) => body.push(chunk)); response.on('end', () => resolve({done:true, code:response.statusCode, msg:body.join('')})); }); request.on('error', (err) => reject(err)) }) }; function main(args) { if(!args){ return spin(0); } else{ if('spin' in args){ return spin(args.spin); } if('url' in args){ return httpget(args.url);}return spin(0);}};)";
-
-  /* Load up the base snapshot environment */
-  ebbrt::kprintf_force(YELLOW "Loading base env from snap\n" RESET);
-
-  auto umi = getUMIFromSV( *snap_sv );
-
-  ebbrt::Future<umm::UmSV*> hot_sv_f = umi->SetCheckpoint(
-      umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-
-  // Halt sv after future is fulfilled.
-  hot_sv_f.Then([](ebbrt::Future<umm::UmSV *> hot_sv_f) {
-    // Spawn asyncronously allows the debug context clean up correctly
-    hot_sv = hot_sv_f.Get();
-    // ebbrt::kprintf_force(YELLOW "Got snapshot, about to call halt\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [=]() {
-          ebbrt::kprintf_force(YELLOW "Halting first execution...\n" RESET);
-          umm::manager->Halt(); /* Does not return */
-        },
-        /* force_async = */ true);
-  }); // End snap_f.Then(...)
-
-  // HACK: subvert SetCheckpoint
-  // x86_64::DR0 dr0;
-  // dr0.get();
-  // dr0.val = 0;
-  // dr0.set();
-
-  uint64_t tid = 0;
-  size_t fid = 0;
-  auto umsesh = create_session(tid, fid);
-
-  /* Spawn a new event to make a connection with the instance */
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        uint16_t port = 0;
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
-
-  /* Setup the asyncronous operations on the InvocationSession */
-  umsesh->WhenConnected().Then(
-      [umsesh, code](auto f) {
-        // ebbrt::kprintf_force(YELLOW "Connected, sending init\n" RESET);
-        umsesh->SendHttpRequest("/init", code, true /* keep_alive */);
-      });
-
-  // Halt when closed or aborted
-  umsesh->WhenClosed().Then([](auto f) {
-    // ebbrt::kprintf_force(YELLOW "Connection Closed...\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [] {
-          ebbrt::kprintf_force(YELLOW "Halting...\n" RESET);
-          // umm::manager->SignalHalt(umi_id); /* Return to back to
-          // init_code_and_snap */
-          umm::manager->Halt();
-        },
-        /* force async */ true);
-  });
-
-  umsesh->WhenAborted().Then([](auto f) {
-    ebbrt::event_manager->SpawnLocal(
-        [] {
-          ebbrt::kprintf_force(RED "SESSION ABORTED...\n" RESET);
-          umm::manager->Halt(); /* Return to back to init_code_and_snap */
-        },
-        /* force async */ true);
-  });
-
-  /* Boot the snapshot */
-
-  ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
-
-  auto start_run = high_resolution_clock::now();
-  umi = std::move(umm::manager->Run(std::move(umi)));
-
-  auto end_run = high_resolution_clock::now();
-
-  auto run_duration = duration_cast<microseconds>(end_run - start_run);
-  // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-  // cout << "Snapshot is this many pages: " << umm::manager->num_cp_pgs << endl;
-
-  /* RETURN HERE AFTER HALT */
-  // delete umsesh;
- 
-}
-
-void generateHotSnapshotSVOptimized(){
-  // kprintf_force(YELLOW "Processing WARM start \n" RESET);
-
-  const std::string code =R"(function spin(pow2_count){ var count = 0; var max = 1<<pow2_count; for (var line=1; line<max; line++) { count++; } return {done:true, c:count}; }; function httpget(url) { return new Promise((resolve, reject) => { setTimeout(function() { resolve({ done: true }); }, 10000); const lib = require('http'); const request = lib.get(url, (response) => { if (response.statusCode < 200 || response.statusCode > 299) { reject(new Error('Failed to load page, status code: ' + response.statusCode)); } const body = []; response.on('data', (chunk) => body.push(chunk)); response.on('end', () => resolve({done:true, code:response.statusCode, msg:body.join('')})); }); request.on('error', (err) => reject(err)) }) }; function main(args) { if(!args){ return spin(0); } else{ if('spin' in args){ return spin(args.spin); } if('url' in args){ return httpget(args.url);}return spin(0);}};)";
-
-  /* Load up the base snapshot environment */
-  ebbrt::kprintf_force(YELLOW "Loading base env from snap\n" RESET);
-
-  auto umi = getUMIFromSV( *snap_sv );
-
-  ebbrt::Future<umm::UmSV*> hot_sv_f = umi->SetCheckpoint(
-      umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-
-  // Halt sv after future is fulfilled.
-  hot_sv_f.Then([](ebbrt::Future<umm::UmSV *> hot_sv_f) {
-    // Spawn asyncronously allows the debug context clean up correctly
-    hot_sv = hot_sv_f.Get();
-    ebbrt::kprintf_force(YELLOW "Got snapshot\n" RESET);
-    // ebbrt::kprintf_force(YELLOW "Got snapshot, about to call halt\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [=]() {
-          ebbrt::kprintf_force(YELLOW "Halting first execution...\n" RESET);
-          umm::manager->Halt(); /* Does not return */
-        },
-        /* force_async = */ true);
-  }); // End snap_f.Then(...)
-
-  // HACK: subvert SetCheckpoint
-  // x86_64::DR0 dr0;
-  // dr0.get();
-  // dr0.val = 0;
-  // dr0.set();
-
-  uint64_t tid = 0;
-  size_t fid = 0;
-  auto umsesh = create_session(tid, fid);
-
-  /* Spawn a new event to make a connection with the instance */
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        uint16_t port = 0;
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
-
-  /* Setup the asyncronous operations on the InvocationSession */
-  umsesh->WhenConnected().Then(
-      [umsesh, code](auto f) {
-        ebbrt::kprintf_force(YELLOW "Connected, sending init\n" RESET);
-        umsesh->SendHttpRequest("/init", code, true /* keep_alive */);
-
-      });
-
-  umsesh->WhenInitialized().Then(
-      [umsesh](auto f) {
-        ebbrt::kprintf_force(GREEN "Initialized, sending run\n" RESET);
-        const std::string args = std::string(R"({"spin":"0"})");
-        umsesh->SendHttpRequest("/run", args, false);
-      });
-
-  // Halt when closed or aborted
-  umsesh->WhenClosed().Then([](auto f) {
-    ebbrt::kprintf_force(YELLOW "Connection Closed...\n" RESET);
-    // ebbrt::event_manager->SpawnLocal(
-    //     [] {
-    //       ebbrt::kprintf_force(YELLOW "Halting...\n" RESET);
-    //       // umm::manager->SignalHalt(umi_id); /* Return to back to
-    //       // init_code_and_snap */
-    //       umm::manager->Halt();
-    //     },
-    //     /* force async */ true);
-  });
-
-  umsesh->WhenAborted().Then([](auto f) {
-    ebbrt::event_manager->SpawnLocal(
-        [] {
-          ebbrt::kprintf_force(RED "SESSION ABORTED...\n" RESET);
-          umm::manager->Halt(); /* Return to back to init_code_and_snap */
-        },
-        /* force async */ true);
-  });
-
-  /* Boot the snapshot */
-
-  ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
-
-  auto start_run = high_resolution_clock::now();
-  umi = std::move(umm::manager->Run(std::move(umi)));
-
-  auto end_run = high_resolution_clock::now();
-
-  auto run_duration = duration_cast<microseconds>(end_run - start_run);
-  // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-  // cout << "Snapshot is this many pages: " << umm::manager->num_cp_pgs << endl;
-
-  /* RETURN HERE AFTER HALT */
-  // delete umsesh;
- 
-}
-
-void generateHotSnapshotSVOptimizedTCPTeardown(){
-  // kprintf_force(YELLOW "Processing WARM start \n" RESET);
-
-  const std::string code =R"(function spin(pow2_count){ var count = 0; var max = 1<<pow2_count; for (var line=1; line<max; line++) { count++; } return {done:true, c:count}; }; function httpget(url) { return new Promise((resolve, reject) => { setTimeout(function() { resolve({ done: true }); }, 10000); const lib = require('http'); const request = lib.get(url, (response) => { if (response.statusCode < 200 || response.statusCode > 299) { reject(new Error('Failed to load page, status code: ' + response.statusCode)); } const body = []; response.on('data', (chunk) => body.push(chunk)); response.on('end', () => resolve({done:true, code:response.statusCode, msg:body.join('')})); }); request.on('error', (err) => reject(err)) }) }; function main(args) { if(!args){ return spin(0); } else{ if('spin' in args){ return spin(args.spin); } if('url' in args){ return httpget(args.url);}return spin(0);}};)";
-
-  /* Load up the base snapshot environment */
-  ebbrt::kprintf_force(YELLOW "Loading base env from snap\n" RESET);
-
-  auto umi = getUMIFromSV( *snap_sv );
-
-  ebbrt::Future<umm::UmSV*> hot_sv_f = umi->SetCheckpoint(
-      umm::ElfLoader::GetSymbolAddress("uv_uptime"));
-
-  // Halt sv after future is fulfilled.
-  hot_sv_f.Then([](ebbrt::Future<umm::UmSV *> hot_sv_f) {
-    // Spawn asyncronously allows the debug context clean up correctly
-    hot_sv = hot_sv_f.Get();
-    ebbrt::kprintf_force(YELLOW "Got snapshot\n" RESET);
-    // ebbrt::kprintf_force(YELLOW "Got snapshot, about to call halt\n" RESET);
-    ebbrt::event_manager->SpawnLocal(
-        [=]() {
-          ebbrt::kprintf_force(YELLOW "Halting first execution...\n" RESET);
-          umm::manager->Halt(); /* Does not return */
-        },
-        /* force_async = */ true);
-  }); // End snap_f.Then(...)
-
-  // HACK: subvert SetCheckpoint
-  // x86_64::DR0 dr0;
-  // dr0.get();
-  // dr0.val = 0;
-  // dr0.set();
-
-  uint64_t tid = 0;
-  size_t fid = 0;
-  auto umsesh = create_session(tid, fid);
-
-  /* Spawn a new event to make a connection with the instance */
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        uint16_t port = 0;
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
-
-  /* Setup the asyncronous operations on the InvocationSession */
-  umsesh->WhenConnected().Then(
-      [umsesh, code](auto f) {
-        ebbrt::kprintf_force(YELLOW "Connected, sending init\n" RESET);
-        // NOTE THIS IS THE DIFFERENCE
-        umsesh->SendHttpRequest("/init", code, false /* keep_alive */);
-
-      });
-
-  umsesh->WhenInitialized().Then(
-      [umsesh](auto f) {
-        // ebbrt::kprintf_force(GREEN "Initialized, sending run\n" RESET);
-        // const std::string args = std::string(R"({"spin":"0"})");
-        // umsesh->SendHttpRequest("/run", args, false);
-      });
-
-  // Halt when closed or aborted
-  umsesh->WhenClosed().Then([](auto f) {
-    ebbrt::kprintf_force(YELLOW "Connection Closed...\n" RESET);
-
-    auto umsesh2 = create_session(0, 0);
-    umsesh2->WhenConnected().Then([umsesh2](auto f) {
-      ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
-      const std::string args = std::string(R"({"spin":"0"})");
-      umsesh2->SendHttpRequest("/run", args, false);
-    });
-    uint16_t port = get_internal_port();
-    umsesh2->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-
-    // ebbrt::event_manager->SpawnLocal(
-    //     [] {
-    //       ebbrt::kprintf_force(YELLOW "Halting...\n" RESET);
-    //       // umm::manager->SignalHalt(umi_id); /* Return to back to
-    //       // init_code_and_snap */
-    //       umm::manager->Halt();
-    //     },
-    //     /* force async */ true);
-  });
-
-  umsesh->WhenAborted().Then([](auto f) {
-    ebbrt::event_manager->SpawnLocal(
-        [] {
-          ebbrt::kprintf_force(RED "SESSION ABORTED...\n" RESET);
-          umm::manager->Halt(); /* Return to back to init_code_and_snap */
-        },
-        /* force async */ true);
-  });
-
-  /* Boot the snapshot */
-
-  ebbrt::kprintf_force(YELLOW "About to run umi\n" RESET);
-
-  auto start_run = high_resolution_clock::now();
-  umi = std::move(umm::manager->Run(std::move(umi)));
-
-  auto end_run = high_resolution_clock::now();
-
-  auto run_duration = duration_cast<microseconds>(end_run - start_run);
-  // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-  // cout << "Snapshot is this many pages: " << umm::manager->num_cp_pgs << endl;
-
-  /* RETURN HERE AFTER HALT */
-  // delete umsesh;
- 
-}
-void deployHotSnapshotSV(){
+void deployWarmSnapshot(){
   // void deployHotSnapshotSV(){
   // ebbrt::kprintf_force(CYAN "Deploy hot snap sv \n" RESET);
-  
-  auto umi2 = getUMIFromSV( *hot_sv );
-  const std::string args = std::string(R"({"spin":"0"})");
 
-  uint64_t tid = 0;
-  size_t fid = 0;
-  auto umsesh = create_session(tid, fid);
+  auto umi2 = getUMIFromSV( *warm_sv );
 
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // uint16_t port = 49161;
-        uint16_t port = get_internal_port();
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
+  auto umsesh = create_session();
 
-  umsesh->WhenConnected().Then([umsesh, args](auto f) {
-    umsesh->SendHttpRequest("/run", args, false);
-  });
+  regConnect(&umsesh);
+
+  // umsesh->WhenConnected().Then(
+  //     [umsesh](auto f) { umsesh->SendHttpRequest("/run", getArgs(), false); });
+  regSendRunOnConnect(&umsesh);
   // Halt when closed or aborted
 
-  umsesh->WhenClosed().Then([](auto f) {
-    ebbrt::event_manager->SpawnLocal([] { umm::manager->Halt(); },
-                                     /* force async */ true);
-  });
+  regHaltOnClose(&umsesh);
 
-
-  umm::manager->ctr_list.clear();
   umi2->ZeroPFCs();
+  umm::manager->ctr_list.clear();
+
   auto start_run = high_resolution_clock::now();
   umi2 = std::move(umm::manager->Run(std::move(umi2)));
   auto end_run = high_resolution_clock::now();
@@ -613,63 +466,9 @@ void deployHotSnapshotSV(){
   auto run_duration = duration_cast<microseconds>(end_run - start_run);
   // ebbrt::kprintf_force("zztu%d \n", run_duration.count());
   u_sec_list.push_back(run_duration.count());
-  // cout << "Run duration: " << run_duration.count() << " microseconds" << endl;
-
-  // umi2->Print();
 }
 
-#if 0
-void registerHotConnect(auto umsesh) {
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        ebbrt::kprintf_force(YELLOW "Hot start connect \n" RESET);
-        uint16_t port = 49161;
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
-}
-
-void registerHotSendRun(auto umsesh) {
-  umsesh->WhenConnected().Then([umsesh](auto f) {
-    ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
-    const std::string args = std::string(R"({"spin":"0"})");
-    umsesh->SendHttpRequest("/run", args, false);
-  });
-}
-#endif
-
-// void registerSpicyRun(auto umsesh2, auto start_run, auto spicy_record){
-// umsesh2->WhenConnected().Then([umsesh2, &start_run, &spicy_record](auto f) {
-//                                 ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
-
-//                                 start_run = high_resolution_clock::now();
-//                                 auto this_umi = umm::manager->ActiveInstance();
-//                                 kassert( this_umi != nullptr );
-//                                 this_umi->pfc.zero_ctrs();
-//                                 spicy_record = umm::manager->ctr.CreateTimeRecord(std::string("Spicy"));
-
-//                                 const std::string args = std::string(R"({"spin":"0"})");
-//                                 umsesh2->SendHttpRequest("/run", args, false);
-//                               });
-// }
-
-// void registerSpicyHalt(auto umsesh2,
-//                        std::chrono::high_resolution_clock::time_point spicy_start;
-//                        auto spicy_record, auto spicy_end) {
-
-//   ebbrt::kprintf_force(RED "Halt without clock read\n" RESET);
-
-//   umsesh2->WhenClosed().Then([spicy_record, &spicy_end](auto f) {
-//     umm::manager->ctr.add_to_list(umm::manager->ctr_list, spicy_record);
-//     spicy_end = high_resolution_clock::now();
-
-//     ebbrt::event_manager->SpawnLocal([] { umm::manager->Halt(); },
-//                                      /* force async */ true);
-//                              });
-// }
-
-void deploySpicy(){
+void deployHotHelper(){
   // umm::count::Counter::TimeRecord *spicy_record = umm::manager->ctr.CreateTimeRecord(std::string("Don't print"));
   ebbrt::Promise<void> done_spicy;
   auto spicy_f = done_spicy.GetFuture();
@@ -678,25 +477,20 @@ void deploySpicy(){
   auto spicy_start = new high_resolution_clock::time_point();
   auto spicy_end = new high_resolution_clock::time_point();
 
-    // ebbrt::kprintf_force(YELLOW "Hot Connection Closed...\n" RESET);
     // Start a new TCP connection for Spicy start.
-    auto umsesh2 = create_session(0, 0);
-
-    // ebbrt::kprintf_force(YELLOW "Spicy Hot start connect \n" RESET);
+    auto umsesh2 = create_session();
 
     // When connected for spicy, send run.
     umsesh2->WhenConnected().Then([umsesh2, spicy_record](auto f) {
-      // ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
 
       auto this_umi = umm::manager->ActiveInstance();
       kassert( this_umi != nullptr );
-      this_umi->ZeroPFCs();
 
+      this_umi->ZeroPFCs();
       umm::manager->ctr_list.clear(); // Clear placeholder.
       *spicy_record = umm::manager->ctr.CreateTimeRecord(std::string("Spicy"));
 
-      const std::string args = std::string(R"({"spin":"0"})");
-      umsesh2->SendHttpRequest("/run", args, false);
+      umsesh2->SendHttpRequest("/run", getArgs(), false);
     });
 
     // When spicy finished, halt.
@@ -706,14 +500,11 @@ void deploySpicy(){
       auto run_duration =
           duration_cast<microseconds>(*spicy_end - *spicy_start);
       u_sec_list.push_back(run_duration.count());
+      // auto this_umi = umm::manager->ActiveInstance();
+      // ebbrt::kprintf_force(CYAN "%d us\n" RESET, run_duration.count());
+      // this_umi->pfc.dump_ctrs();
       done_spicy.SetValue();
-      // ebbrt::event_manager->SpawnLocal([] {
-      //       umm::manager->Halt();
-      //     },
-      //     /* force async */ true);
     });
-
-    // registerSpicyHalt(umsesh2, spicy_record, &spicy_end);
 
     // Connect!
     {
@@ -725,54 +516,36 @@ void deploySpicy(){
     spicy_f.Block();
 }
 
-void deploySpicyHotSnapshotSV(){
+void deployHotSnapshot(){
   ebbrt::kprintf_force(GREEN "Hot start then Spicy\n" RESET);
   // Run a hot start, then a spicy hot start.
 
-  auto umi2 = getUMIFromSV( *hot_sv );
+  auto umi2 = getUMIFromSV( *warm_sv );
 
   // Hot start session.
-  auto umsesh = create_session(0, 0);
+  auto umsesh = create_session();
 
-  ebbrt::event_manager->SpawnLocal(
-      [umsesh] {
-        // Start a new TCP connection with the http request
-        ebbrt::kprintf_force(YELLOW "Hot start connect \n" RESET);
-        uint16_t port = get_internal_port();
-        umsesh->Pcb().Connect(umm::UmInstance::CoreLocalIp(), 8080, port);
-      },
-      /* force async */ true);
+  regConnect(&umsesh);
 
-  umsesh->WhenConnected().Then([umsesh](auto f) {
-    ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
-    const std::string args = std::string(R"({"spin":"0"})");
-    umsesh->SendHttpRequest("/run", args, false);
-  });
-
-  // Stack allocated placeholders for our counters
-  // auto spicy_record = umm::manager->ctr.CreateTimeRecord(std::string("Don't print"));
-  // high_resolution_clock::time_point spicy_start;
-  // high_resolution_clock::time_point spicy_end;
-  // auto spicy_end = high_resolution_clock::now();
-  // auto spicy_start = high_resolution_clock::now();
-
-  // ebbrt::kprintf_force(MAGENTA "declare start = %d , end = %d \n" RESET, spicy_start, spicy_end);
-  // auto r_d = duration_cast<microseconds>(spicy_end - spicy_start)
-  // ebbrt::kprintf_force(MAGENTA "start duration %d\n" RESET, r_d.count());
-
+  regSendRunOnConnect(&umsesh);
+  // umsesh->WhenConnected().Then([umsesh](auto f) {
+  //   // ebbrt::kprintf_force(YELLOW "Connected, sending run\n" RESET);
+  //   umsesh->SendHttpRequest("/run", getArgs(), false);
+  // });
 
   // When the hot start connection is closed, launch Spicy.
   umsesh->WhenClosed().Then([](auto f) {
     ebbrt::kprintf_force(MAGENTA "Hot closed, deploy spicy.\n" RESET);
-    for (int i = 0; i < 475; i++) {
-      deploySpicy();
-      if (i == 474){
+    int numRuns = 475;
+    for (int i = 0; i < numRuns; i++) {
+      deployHotHelper();
+
+      if (i == numRuns - 1) {
         int ctr = 0;
         ebbrt::kprintf_force("Count u_sec\n");
-        for( const auto& val: u_sec_list){
+        for (const auto &val : u_sec_list) {
           ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
-      }
-
+        }
         ebbrt::acpi::PowerOff();
       }
     }
@@ -786,24 +559,56 @@ void deploySpicyHotSnapshotSV(){
   ebbrt::kprintf_force(YELLOW "Run finished.\n" RESET);
 }
 
-void AppMain() {
+void timeFullBoot(){
+  deployFullBoot();
+  int ctr = 0;
+  ebbrt::kprintf_force("Count u_sec\n");
+  for (const auto &val : u_sec_list) {
+    ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
+  }
+}
 
-  // Initialize the UmManager
-  umm::UmManager::Init();
+void coldTest(){
+  ebbrt::kprintf_force(CYAN "Running Cold Starts!\n" RESET);
 
-  // This populates the global variable snap_sv.
-  ebbrt::kprintf_force(YELLOW "Generating Base Env snap.\n" RESET);
-  generateBaseEnvtSnapshotSV();
+  bool useOpt = true;
+  if(useOpt){
+    generateBaseEnvtSnapshotOpt();
+  }else{
+    generateBaseEnvtSnapshot();
+  }
 
-  ebbrt::kprintf_force(YELLOW "generating hot snap.\n" RESET);
-  generateHotSnapshotSV();
-  // generateHotSnapshotSVOptimized();
-  // generateHotSnapshotSVOptimizedTCPTeardown();
+  int numRuns = 1;
+  for (int i = 0; i < numRuns; i++) {
+    deployColdStart(useOpt);
+    // ebbrt::kprintf_force(MAGENTA "Next cold start\n" RESET);
+    // deployColdStartOpt();
+  }
+
+  int ctr = 0;
+  ebbrt::kprintf_force("Count u_sec\n");
+  for (const auto &val : u_sec_list) {
+    ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
+  }
+}
+
+void warmTest(){
+  ebbrt::kprintf_force(YELLOW "Running Warm Starts!\n" RESET);
+
+  // This buries complexity in base envt.
+  bool useOpt = true;
+  generateWarmSnapshot(useOpt);
+
+  // This bloats warm snap.
+  // Have to modify js code to use this one.
+  // This is the worse way to optimize latency.
+  // generateWarmSnapshotOptimized();
+
 
   // Deploy.
-  int numRuns = 500;
+  int numRuns = 50;
   for (int i = 0; i < numRuns; i++) {
-    deployHotSnapshotSV();
+      deployWarmSnapshot();
   }
 
   int ctr = 0;
@@ -812,8 +617,22 @@ void AppMain() {
     ebbrt::kprintf_force("latency %d\t%d\n", ctr++, val);
   }
 
-  // ebbrt::kprintf_force(YELLOW "deploying hot and spicy!\n" RESET);
-  // deploySpicyHotSnapshotSV();
+}
+
+void hotTest(){
+  ebbrt::kprintf_force(RED "Running Hot Starts!\n" RESET);
+  // Not sure which to use.
+  generateWarmSnapshot(true);
+  deployHotSnapshot();
+
+}
+
+void AppMain() {
+  umm::UmManager::Init();
+  // timeFullBoot();
+  coldTest();
+  // warmTest();
+  // hotTest();
 
   ebbrt::kprintf_force(CYAN "Done!\n" RESET);
   ebbrt::acpi::PowerOff();

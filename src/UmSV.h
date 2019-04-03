@@ -58,6 +58,7 @@ public:
   void AddRegion(Region &reg);
   void ZeroPFCs();
   void Print();
+  size_t CountOwnedPages() const;
   // void deepCopy(const UmSV other);
   umm::Region& GetRegionOfAddr(uintptr_t vaddr);
   const Region& GetRegionByName(const char *p);

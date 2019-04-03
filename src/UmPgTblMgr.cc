@@ -135,6 +135,17 @@ void UmPgTblMgmt::countDirtyPagesLamb(std::vector<uint64_t> &counts,
   traverseAccessedPages(root, lvl, leafFn);
 }
 
+void UmPgTblMgmt::countWritablePagesLamb(std::vector<uint64_t> &counts,
+                                      simple_pte *root, uint8_t lvl) {
+  // Counts number dirty pages.
+  auto leafFn = [&counts](simple_pte *curPte, uint8_t lvl){
+                  if(isLeaf(curPte, lvl))
+                    if(isWritable(curPte))
+                      counts[lvl]++;
+                };
+  // NOTE: Trying walking accessed, not valid.
+  traverseAccessedPages(root, lvl, leafFn);
+}
 void UmPgTblMgmt::printTraversalLamb(simple_pte *root, uint8_t lvl) {
   // Dummy example for how one might use the general traverser.
   auto predicate = [](simple_pte *curPte, uint8_t lvl) -> bool {

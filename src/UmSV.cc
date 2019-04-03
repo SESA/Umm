@@ -61,6 +61,14 @@ UmSV::GetRegionByName(const char* p){
   while(1);
 }
 
+  size_t UmSV::CountOwnedPages() const{
+    // Owned pages are a subset of all pages. They only include pages that have
+    // been write faulted or copy on write faulted in. Doesn't count COW
+    // reference pages.
+    return pth.CountOwnedPages();
+  }
+
+
 } // namespace umm
 
   // UmSV::UmSV(const UmSV &other) {
