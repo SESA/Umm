@@ -17,11 +17,11 @@ void solo5_hypercall_poll(volatile void *arg) {
     arg_->ret = 1;
     return;
   }
-  if (arg_->timeout_nsecs > 100000) {
-    umm::manager->Block(100000);
-  }else{
+//  if (arg_->timeout_nsecs > 500000) {
+//    umm::manager->Block(500000);
+//  }else{
     umm::manager->Block(arg_->timeout_nsecs);
-  }
+//  }
   // return from block
 
   if (umm::manager->ActiveInstance()->HasData()) {
@@ -78,8 +78,10 @@ struct ukvm_netread {
 void solo5_hypercall_netread(volatile void *arg) {
   auto arg_ = (volatile struct ukvm_netread *)arg;
   if (umm::manager->ActiveInstance()->HasData()) {
-    auto buf = umm::manager->ActiveInstance()->ReadPacket();
+    auto buf = umm::manager->ActiveInstance()->ReadPacket(arg_->len);
+    kbugon(!buf);
     auto buflen = buf->ComputeChainDataLength();
+		kprintf("solo5 netread len=%d\n", arg_->len);
     kbugon(buflen > arg_->len);
     auto dp = buf->GetDataPointer();
     dp.GetNoAdvance(buflen,

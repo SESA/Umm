@@ -18,6 +18,14 @@
 // TOGGLE DEBUG PRINT  
 #define DEBUG_PRINT_UMI  0
 
+namespace{
+  std::atomic<uint32_t> umi_id_next_{1}; // UMI id counter
+}
+
+umm::UmInstance::UmInstance(const umm::UmSV &sv) : sv_(sv) {
+  id_ = ++umi_id_next_;
+};
+
 /** XXX: Takes a virtual address and length and marks the pages USER */ 
 // TODO: Not this..
 void hackSetPgUsr(uintptr_t vaddr, int bytes){
@@ -79,16 +87,29 @@ void umm::UmInstance::RegisterPort(uint16_t port){
 }
 
 void umm::UmInstance::WritePacket(std::unique_ptr<ebbrt::IOBuf> buf){
+  // set active?
   umm::manager->SignalResume(Id());
   umi_recv_queue_.emplace(std::move(buf));
 }
 
-std::unique_ptr<ebbrt::IOBuf> umm::UmInstance::ReadPacket(){
+std::unique_ptr<ebbrt::IOBuf> umm::UmInstance::ReadPacket(size_t len) {
   if(!HasData())
     return nullptr;
-  auto buf = std::move(umi_recv_queue_.front());
-  umi_recv_queue_.pop();
-  return std::move(buf);
+
+  if(umi_recv_queue_.front()->ComputeChainDataLength() <= len){
+    auto buf = std::move(umi_recv_queue_.front());
+    umi_recv_queue_.pop();
+    return std::move(buf);
+  }else{
+    auto dp = umi_recv_queue_.front()->GetDataPointer();
+    auto buf = umm::UmProxy::raw_to_iobuf(dp.Data(), len);
+    // Examine the front packet
+    kprintf("BUF: solo_len=%d, len=%d, clen=%d cs=%d \n", len, buf->Length(),
+            buf->ComputeChainDataLength(), buf->CountChainElements());
+    umi_recv_queue_.front()->Advance(len);
+    return std::move(buf);
+  }
+
 }
 
 
@@ -109,11 +130,12 @@ void umm::UmInstance::Sleep(size_t ns){
     time_wait = now + std::chrono::nanoseconds(ns);
     enable_timer(now);
 #if DEBUG_PRINT_UMI
-    kprintf(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(), Id(),
+    kprintf_force(RED "C%dU%d:B<%u> " RESET, (size_t)ebbrt::Cpu::GetMine(), Id(),
             (ns / 1000));
 #endif
-  } 
-  
+  }
+
+  //ebbrt::event_manager->SpawnLocal([this]() { umm::manager->Yield(); }, true);
   block_execution();
   // Woke up!
 }
@@ -134,7 +156,8 @@ void umm::UmInstance::unblock_execution(){
   kprintf_force(CYAN "C%dU%d:SIG_UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
 #endif
   // WARNING: THIS IS AN ASYNCHRONOUS EVENT
-  blocked_ = false; 
+  blocked_ = false;
+  disable_timer(); // NOT SURE ABOUT THIS..
   ebbrt::event_manager->ActivateContext(std::move(*context_));
   // Return to caller
 }
@@ -148,27 +171,34 @@ void umm::UmInstance::block_execution() {
   blocked_ = true; 
   ebbrt::event_manager->SaveContext(*context_); /* ... now blocked ...*/
 
-  /* OK! We're back! */
-
-  disable_timer(); // NOT SURE ABOUT THIS..
-  context_ = nullptr;
-
   // WARNING: ebbrt::event_manager->ActivateContext is an ASYNCHRONOUS
   // operation, so
   // its possible that the state of the world has changed since the call was
   // made to unblock execution.
 
+  /* OK! We're back! */
+
+  context_ = nullptr;
+
   /* Check with the master to see if we can start */
   if (umm::manager->request_slot_entry(Id()) == false) {
     // Hmm... Looks like we am not able to start
 #if DEBUG_PRINT_UMI
-    kprintf_force(RED "C%dU%d:XXX " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  if (timer_set) {
+    kprintf_force(RED "C%dU%d:XXXT\n" RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  }else{
+    kprintf_force(RED "C%dU%d:XXX\n" RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  }
 #endif
     block_execution(); // XXX: No timer, it's up to the UmManager to restore us
   } else {
     kassert(umm::manager->ActiveInstanceId() == Id());
 #if DEBUG_PRINT_UMI
+  if (timer_set) {
     kprintf_force("C%dU%d:UP " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  }else{
+    kprintf_force("C%dU%d:UPT " RESET, (size_t)ebbrt::Cpu::GetMine(), Id());
+  }
 #endif
   }
   return; /* WARNING: Returns back into the slot address space */

@@ -65,7 +65,7 @@ public:
   UmInstance() = delete;
   // Using a reference so we don't make a redundant copy.
   // This is where the argument page table is copied.
-  explicit UmInstance(const UmSV &sv) : sv_(sv){};
+  explicit UmInstance(const UmSV &sv); 
   ~UmInstance(){ disable_timer(); }
   /** Timer event handler */
   void Fire() override;
@@ -112,7 +112,7 @@ behaviour within the execution slot.
 
   /* IO Management */
 
-  std::unique_ptr<ebbrt::IOBuf> ReadPacket();
+  std::unique_ptr<ebbrt::IOBuf> ReadPacket(size_t len);
   void WritePacket(std::unique_ptr<ebbrt::IOBuf>);
   bool HasData() { return (!umi_recv_queue_.empty()); };
 
@@ -157,7 +157,7 @@ private:
 
   /* Internal state */
   ebbrt::EventManager::EventContext *context_; // blocking context
-  umi::id id_ = ebbrt::ebb_allocator->AllocateLocal();
+  umi::id id_;// = ebbrt::ebb_allocator->AllocateLocal();
   std::queue<std::unique_ptr<ebbrt::IOBuf>> umi_recv_queue_;
 }; // end umm::UmInstance
 }
