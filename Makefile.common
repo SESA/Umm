@@ -13,6 +13,7 @@ EXTDIR ?= $(MYDIR)/ext
 INSTALLDIR ?= $(BUILDDIR)
 SRCDIR ?= $(MYDIR)/src
 USRDIR ?= $(MYDIR)/usr
+TESTDIR ?= $(MYDIR)/tests
 
 # EbbRT 
 # 	NOTE: The EbbRT native toolchain is required to build Umm

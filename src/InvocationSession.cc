@@ -12,6 +12,10 @@
 #define kprintf ebbrt::kprintf
 using ebbrt::kprintf_force;
 
+std::string reply_buff = "";
+
+std::string ok_init_response = R"({"OK":true})";
+
 /* class umm::InvocationSession */
 
 void umm::InvocationSession::Connected() {
@@ -71,24 +75,41 @@ void umm::InvocationSession::Receive(std::unique_ptr<ebbrt::MutIOBuf> b) {
   size_t response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                              ebbrt::clock::Wall::Now() - command_clock_)
                              .count();
-
   //TODO: support chain and incomplete buffers (i.e., large replies)
   kassert(!b->IsChained());
 
   /* construct a string of the response message */
   std::string reply(reinterpret_cast<const char *>(b->Data()), b->Length());
-  std::string response = reply.substr(reply.find_first_of("{"));
+
+  if ((int)reply.find_first_of("{") < 0) {
+    //ebbrt::kprintf_force(CYAN "REPLY is incomplete\n" RESET);
+    reply_buff += reinterpret_cast<const char *>(b->Data());
+    //ebbrt::kprintf_force(CYAN "REPLY BUFF: %s\n" RESET, reply_buff.c_str());
+    return;
+  }
+
+  if (!reply_buff.empty()) {
+    reply_buff += reply;
+    reply = reply_buff;
+    //ebbrt::kprintf_force(CYAN "REPLY: %s\n" RESET, reply.c_str());
+    reply_buff = "";
+  }
+
+  std::string response = reply.substr(reply.find_first_of("{"), ok_init_response.length());
   std::string http_status = reply.substr(0, reply.find_first_of("\r"));
 
   /* Verify if the http request was successful */
-  if(http_status != "HTTP/1.1 200 OK"){
-    istats_.exec.status = 1; /* INVOCATION FAILED */
-    kprintf_force(RED "REQUEST FAILED!\n REQUEST: %s\nRESPONSE: %s\n", previous_request_.c_str(), response.c_str());
-    when_aborted_.SetValue();
-    //XXX: Not sure about this disconnect
-    Pcb().Disconnect();
-    Finish(response);
+  if(http_status != "HTTP/1.0 200 OK"){
+    if (response != R"({"OK":true})") {
+      istats_.exec.status = 1; /* INVOCATION FAILED */
+      kprintf_force(RED "REQUEST FAILED!\n REQUEST: %s\nRESPONSE: %s\n", previous_request_.c_str(), response.c_str());
+      when_aborted_.SetValue();
+      //XXX: Not sure about this disconnect
+      Pcb().Disconnect();
+      Finish(response);
+    }
   }
+
   /* An {"OK":true} response signals a completed INIT */
   if (response == R"({"OK":true})" && !is_initialized_) {
     istats_.exec.init_time = response_time;
@@ -99,6 +120,8 @@ void umm::InvocationSession::Receive(std::unique_ptr<ebbrt::MutIOBuf> b) {
           when_initialized_.SetValue();
         });
   }
+
+
   /* Any other response signals a completed RUN */
   else {
     when_finished_.SetValue();

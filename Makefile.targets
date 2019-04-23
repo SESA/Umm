@@ -6,16 +6,61 @@
 
 TARGET ?= nodejsAction # Default target
 
-.PHONY: nodejs nodejsAction solo5-abort solo5-blk solo5-exception solo5-globals solo5-hello solo5-ping solo5-quiet solo5-time
+.PHONY: python_fs python_venv_fs python_main python_venv_main nodejs nodejsAction solo5-abort solo5-blk solo5-exception solo5-globals solo5-hello solo5-ping solo5-quiet solo5-time
 
 #For all tests:
 #copy in the target binary named simply as 'target'
+
+
 
 # RUMP TARGETS 
 RUMPHELLOER=$(RUMP_DIR)/tests/hello/hello.c
 RUMPNOP=$(RUMP_DIR)/tests/nop/nop.c
 RUMPSIMPLEHELLOER=$(RUMP_DIR)/tests/hello/simplehello.c
 RUMPHELLOERPP=$(RUMP_DIR)/tests/hello/hellopp.cc
+
+
+
+# PYTHON TARGETS
+PYTHONTEST = $(TESTDIR)/python_test
+PYTHONFS = $(PYTHONTEST)/python.fs
+PYTHONMODULES ?= $(PYTHON_PATH)/build/pythondist/lib/python3.5
+PYTHONVENV ?= $(PYTHONTEST)/virtual-env
+
+python_base:
+	rm -rf $(PYTHONTEST)/python.fs
+	rm -rf $(PYTHONTEST)/python
+	mkdir -p $(PYTHONTEST)/python/lib/
+	cp -r $(PYTHONMODULES) $(PYTHONTEST)/python/lib/.
+
+python_venv:
+	rm -rf $(PYTHONVENV)
+	pyvenv-3.5 $(PYTHONVENV)
+	( \
+	   cd $(PYTHONVENV) && . bin/activate; \
+	   pip install -r $(PYTHONTEST)/requirements.txt; \
+	   deactivate; \
+	)
+
+python_fs: python_base
+	cp $(PYTHONTEST)/main.py $(PYTHONTEST)/python/lib/python3.5/site-packages/.
+	$(CD) $(PYTHONTEST) && $(RUMP_COOKFS) python.fs python
+
+python_venv_fs: python_base python_venv
+	cp -r $(PYTHONVENV)/lib/python3.5/site-packages/* $(PYTHONTEST)/python/lib/python3.5/site-packages/.
+	cp $(PYTHONTEST)/main.py $(PYTHONTEST)/python/lib/python3.5/site-packages/.
+	$(CD) $(PYTHONTEST) && $(RUMP_COOKFS) python.fs python
+
+python_venv_main_same_fs: $(PYTHONFS)
+	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
+
+python_venv_main: python_venv_fs
+	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
+
+python_main: python_fs
+	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
+
+
 
 # nodejsAction
 NODEJSACTIONDIR ?= $(EXT_PATH)/incubator-openwhisk-runtime-nodejs/core

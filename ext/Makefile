@@ -1,5 +1,7 @@
 EXT_PATH := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+-include ../Makefile.common
+
 # solo5
 SOLO5_DIR ?= $(EXT_PATH)/solo5
 SOLO5_OBJ ?= $(SOLO5_DIR)/kernel/ebbrt/solo5.o
@@ -25,7 +27,13 @@ RUMPCONFIG = $(RUMPPACKDIR)/config.mk
 NODEJS_PATH ?= $(RUMPPACKDIR)/nodejs/
 NODEJS_BIN=$(NODEJS_PATH)/build-4.3.0/out/Release/node
 
-all: solo5 nodejs
+
+# python stuff
+PYTHON_PATH ?= $(RUMPPACKDIR)/python3/
+PYTHON_BIN=$(PYTHON_PATH)/build/python
+
+
+all: solo5 nodejs python
 
 solo5: $(SOLO5_OBJ)
 
@@ -33,10 +41,14 @@ rumprun: $(RUMP_SOLO5_X86_64) $(RUMP_SOLO5_UKVM)
 
 nodejs: $(NODEJS_BIN)
 
+python: $(PYTHON_BIN)
+
+
 $(SOLO5_OBJ):
 	$(MAKE) -C $(SOLO5_DIR) ebbrt
 
 $(SOLO5_HW): $(SOLO5_OBJ)
+
 
 $(RUMP_SOLO5_X86_64):
 	cd $(RUMP_DIR) && git submodule update --init
@@ -47,8 +59,13 @@ $(RUMP_SOLO5_UKVM): $(SOLO5_OBJ) | $(RUMP_SOLO5_X86_64)
 
 $(RUMP_BAKE): $(RUMP_SOLO5_X86_64)
 
+
 $(NODEJS_BIN): $(RUMPCONFIG) rumprun
 	/bin/bash -c "source $(RUMP_DIR)/obj/config-PATH.sh && $(MAKE) -C $(NODEJS_PATH)"
+
+$(PYTHON_BIN): $(RUMPCONFIG) rumprun
+	/bin/bash -c "source $(RUMP_DIR)/obj/config-PATH.sh && $(MAKE) -C $(PYTHON_PATH)"
+
 
 $(RUMPCONFIG):
 	echo "RUMPRUN_TOOLCHAIN_TUPLE=x86_64-rumprun-netbsd" > $@
@@ -57,5 +74,6 @@ ext-clean:
 	$(MAKE) -C $(SOLO5_DIR) clean
 	$(MAKE) -C $(RUMP_DIR) clean
 	$(MAKE) -C $(NODEJS_PATH) clean
+	$(MAKE) -C $(PYTHON_PATH) clean
 
-.PHONY: ext-clean solo5 rumprun nodejs
+.PHONY: ext-clean solo5 rumprun nodejs python
