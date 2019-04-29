@@ -16,6 +16,7 @@
 
 // TOGGLE DEBUG PRINT  
 #define DEBUG_PRINT_SLOT  0
+#define PRINT_SNAPSHOT_INFO  0
 
 uintptr_t umm::UmManager::GetKernStackPtr() const{
 	// Assuming this core has an active umi and it's the one we want 
@@ -168,7 +169,6 @@ void umm::UmManager::SignalHalt(umm::umi::id umi) {
 #endif
     slot_queue_move_to_front(umi);
     inactive_umi_halt_map_.emplace(umi, true);
-    kprintf("[y1]");
     Yield(); 
   }
 }
@@ -235,7 +235,8 @@ void umm::UmManager::SignalResume(umm::umi::id umi){
   }else{
     // Move UMI to the front of the queue and attempt to yield the slot
     slot_queue_move_to_front(umi);
-    ebbrt::event_manager->SpawnLocal([this]() { this->Yield(); }, true);
+    //ebbrt::event_manager->SpawnLocal([this]() { this->Yield(); }, true);
+    Yield();
   }
 }
 
@@ -312,9 +313,9 @@ void umm::UmManager::Yield(){
     return;
   }
 
-  /* OK, lets try and yield! */
+  /* OK, lets yield the current instance */
 
-  // If the queue is empty, unload the slot & queue the current instance
+  // If the wait queue is empty, unload the slot & queue the current instance
   if (slot_queue_size() == 0) {
     auto old_umi = slot_unload_instance();
     auto old_umi_id = old_umi->Id();
@@ -398,8 +399,12 @@ void umm::UmManager::Yield(){
 
 void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
   kassert(status() != snapshot);
-  set_status(snapshot);
 
+  // snap_addr will be zero if SetCheckpoint was never called on the UmI
+  if(active_umi_->snap_addr == 0)
+    return;
+
+  set_status(snapshot);
   UmSV *snap_sv = new UmSV();
   snap_sv->ef = *ef;
 
@@ -411,8 +416,11 @@ void umm::UmManager::process_checkpoint(ebbrt::idt::ExceptionFrame *ef) {
   }
 
 #if DEBUG_PRINT_SLOT
-  kprintf_force(MAGENTA "C%dU%d:SNAP! " RESET, (size_t)ebbrt::Cpu::GetMine(), active_umi_->Id());
+  kprintf_force(MAGENTA "C%dU%d: snapshot " RESET, (size_t)ebbrt::Cpu::GetMine(), active_umi_->Id());
+#endif
+#if PRINT_SNAPSHOT_INFO
   active_umi_->pfc.dump_ctrs();
+
 #endif
 
   // Copy all dirty pages into new page table.
@@ -680,7 +688,6 @@ std::unique_ptr<umm::UmInstance> umm::UmManager::Start(umm::umi::id umi_id) {
 #endif
     ebbrt::event_manager->SpawnLocal(
         [this]() {
-          kprintf("[y4]");
           this->Yield();
         },
         true);
