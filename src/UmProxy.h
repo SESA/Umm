@@ -131,10 +131,6 @@ public:
    */
   uint32_t InstanceRead(void *data, const size_t len);
 
-  /** InstanceHasData - Return true if there is data 
-   */
-  bool InstanceHasData();
-
   /** SetActiveInstance - Clears transient state and sets a "loaded" umi_id */ 
   void SetActiveInstance(umm::umi::id id);
 

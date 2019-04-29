@@ -55,7 +55,7 @@ uint16_t umm::ProxyRoot::SetupExternalPortMapping(umi::id id, uint16_t port) {
   return nport;
 }
 
-void umm::ProxyRoot::FreePorts(umi::id id){
+void umm::ProxyRoot::FreePorts(umi::id target_umi){
   return;
 }
 
@@ -63,7 +63,9 @@ void umm::ProxyRoot::FreePorts(umi::id id){
 uint16_t umm::ProxyRoot::allocate_port() {
   std::lock_guard<ebbrt::SpinLock> guard(port_lock_);
   if (unlikely(port_set_.empty())) {
-    kabort("ProxyRoot: ERROR no NAT ports remaining! (because we never free any! lol.) \n");
+   // kabort("ProxyRoot: ERROR no NAT ports remaining! (because we never free any! lol.) \n");
+    kprintf_force("ProxyRoot: ERROR no NAT ports remaining! (because we never free any! lol.) \n");
+		return 0;
   }
   uint16_t ret = boost::icl::first(port_set_);
   port_set_.subtract(ret);
@@ -86,7 +88,8 @@ void umm::UmProxy::RegisterInternalPort(umi::id id, uint16_t src_port) {
     if( id != it->second ){
       kprintf_force(RED "ProxyRoot: ERROR conflict on mapping internal src_port=%u for "
                         "UMI #%d, conflict with UMI #%d \n", src_port, id, it->second);
-      kabort();
+			return;
+      //kabort();
     }
   }
 #if DEBUG_PRINT_IO
@@ -417,7 +420,7 @@ void umm::UmProxy::ProcessIncoming(std::unique_ptr<ebbrt::IOBuf> buf,
           return;
         }
 
-        // Disable instance yield when external TCP packet has non-zero payload
+        // Reactivate instance when external TCP packet has non-zero payload
         if (payload_len > 0) {
           // Signal yield for external TCP packet with non-zero payload
           auto umi_ref = umm::manager->GetInstance(target_umi);
@@ -559,10 +562,9 @@ void umm::UmProxy::ProcessOutgoing(std::unique_ptr<ebbrt::MutIOBuf> buf){
         // Signal yield for external TCP packet with non-zero payload
         auto umi_ref = umm::manager->GetInstance(target_umi);
         kbugon(!umi_ref);
-        umi_ref->SetActive();
+        umi_ref->SetInactive();
       }
     }
-
     // What does EthArpSend do?...
     //    - retreat buffer to start of eth header
     //    - checks eth for broadcast, multicast, external send
@@ -598,9 +600,20 @@ void umm::UmProxy::RemoveInstanceState(umm::umi::id id) {
 #endif
   if (umi_id_ == id) {
     umi_id_ = 0; // We no longer have an active instance
+    // Clear the port map cache?
     //port_map_cache_.clear();
   }
-  root_.FreePorts(id);
+  auto umi_ref = umm::manager->GetInstance(id);
+  if (!umi_ref) {
+    kprintf(YELLOW "Tried to free ports of nonexistant UMI #%u\n" RESET, id);
+    return;
+  }
+  // Free the internal ports
+  kprintf(GREEN "Freeing ports for UMI #%u\n" RESET, id);
+  for (int i : umi_ref->src_ports_) {
+    host_src_port_map_cache_.erase(i);
+  }
+  //root_.FreePorts(id);  Does nothing at the moment
 }
 
 
