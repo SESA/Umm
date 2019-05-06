@@ -57,6 +57,9 @@ python_venv_main_same_fs: $(PYTHONFS)
 python_venv_main: python_venv_fs
 	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
 
+python_main_same_fs: $(PYTHONFS)
+	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
+
 python_main: python_fs
 	$(RUMP_BAKE) -m "add $(PYTHONFS)" solo5_ukvm_net target $(PYTHON_BIN)
 

@@ -17,6 +17,7 @@
 
 #include <UmProxy.h>
 #include <Umm.h>
+#include <UmSV.h>
 #include <InvocationSession.h>
 
 #include <chrono> 
@@ -28,11 +29,13 @@ using namespace std::chrono;
 
 const std::string my_cmd = R"({"cmdline":"poopthon -m main","env":"PYTHONHOME=/python", "net":{"if":"ukvmif0","cloner":"true","type":"inet","method":"static","addr":"169.254.1.0","mask":"16"}})";
 
-const std::string code =R"(print('this is some python code\n'))";
-const std::string args = std::string(R"({"OK":True})");
+const std::string code =R"(def main(args): res = lambda args: (args + (args-1)); return res(args);)";
+const std::string args = std::string(R"({"args":10})");
 
 
-umm::UmSV* snap_sv;
+umm::UmSV* snap_sv;	// base sv: interpreter state
+umm::UmSV* warm_sv;	// warm sv: interpreter + function state
+umm::UmSV* hot_sv;	// hot sv: interpreter + function + args state
 
 
 uint16_t port_ = 0;
@@ -57,11 +60,13 @@ umm::InvocationSession* create_session(uint64_t tid, size_t fid) {
 }
 
 
+/* make Umm instance from sv */
 std::unique_ptr<umm::UmInstance> getUMIFromSV(umm::UmSV& sv){
   return std::make_unique<umm::UmInstance>(sv);
 }
 
 
+/* initialize Umm instance */
 std::unique_ptr<umm::UmInstance> initInstance(){
   auto sv = umm::ElfLoader::createSVFromElf(&_sv_start);
   auto umi = std::make_unique<umm::UmInstance>(sv);
@@ -73,14 +78,21 @@ std::unique_ptr<umm::UmInstance> initInstance(){
 }
 
 
+/* deploy Umm instance from unikernel binary
+ * and snapshot once interpreter is ready
+ */
 void deployUntilBase() {
   auto umi = initInstance();
 
   ebbrt::Future<umm::UmSV *> snap_f = umi->SetCheckpoint(umm::ElfLoader::GetSymbolAddress("__gmtime50"));
 
   snap_f.Then([](ebbrt::Future<umm::UmSV *> snap_f) {
+
     snap_sv = snap_f.Get();
-    ebbrt::kprintf_force(YELLOW "Hit checkpoint, got snapshot...\n" RESET);
+
+    ebbrt::kprintf_force(YELLOW "Hit checkpoint, got base snapshot...\n" RESET);
+    ebbrt::kprintf_force(CYAN "Base snapshot owned pages: %u\n" RESET, snap_sv->CountOwnedPages());
+
     ebbrt::event_manager->SpawnLocal(
         [=]() {
                 ebbrt::kprintf_force(YELLOW "About to call halt...\n" RESET);
@@ -91,6 +103,8 @@ void deployUntilBase() {
 }
 
 
+/* deploy Umm instance from base snapshot
+ */
 void deployFromBase() {
   auto umi = getUMIFromSV( *snap_sv );
 
@@ -108,7 +122,6 @@ void deployFromBase() {
     ebbrt::kprintf_force(YELLOW "Connected, can send init...\n" RESET);
     umsesh->SendHttpRequest("/init", code, true);
   });
-
 
   umsesh->WhenClosed().Then([umsesh2](auto f) {
     ebbrt::kprintf_force(YELLOW "Initialized, can send run...\n" RESET);
@@ -146,7 +159,13 @@ void deployFromBase() {
 void AppMain() {
   umm::UmManager::Init();
 
+  // This is for timing the listener bringup
+  auto start = high_resolution_clock::now();
   deployUntilBase();
+  auto end = high_resolution_clock::now();
+  auto boot_time = duration_cast<microseconds>(end - start);
+  ebbrt::kprintf_force(CYAN "Boot time: %u\n" RESET, boot_time);
+
   deployFromBase();
 
   cout << "powering off: " << endl;

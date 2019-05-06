@@ -1,24 +1,46 @@
+import os
 import time
-from flask import Flask
+import json
+from flask import Flask, request, Response, make_response, jsonify
 
-print('hello... this is a python server test...')
-
-time.gmtime(0)
-
+print('hello... this is a python server test...\n')
 
 app = Flask(__name__)
 
-@app.route("/")
-def hello():
-	return "Hello World!"
+time.gmtime(0)
 
-@app.route("/init")
+code = ''
+args = ''
+
+@app.route("/init", methods=["POST"])
 def init():
-	return "FLASK: Should send init here..."
+	print("\nFLASK: init here...\n")
+	global code
+	global filename
+	global binary
 
-@app.route("/run")
+	code = request.get_json()['value']['code']
+	print("\nFLASK: code: ", code)
+
+	try:
+		fn = compile(code, filename='mycode.py', mode='exec')
+		print("\nFLASK: fn: ", fn)
+		data = {"OK":True}
+	except Exception:
+		print("\nFLASK: could not compile incoming code..\n")
+		data = {"OK":False}
+
+	res = make_response(jsonify(data))
+	return res
+
+@app.route("/run", methods=["POST"])
 def run():
-	return "FLASK: Should send run here..."
+	print("FLASK: run here...\n")
+	exec(code)
+
+	data = {"OK":True}
+	res = make_response(jsonify(data))
+	return res
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', threaded=True)
+    app.run(host='0.0.0.0', threaded=False)
